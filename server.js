@@ -37,6 +37,10 @@ function getAvailableSounds() {
     sounds.push({ name: "Digital Watch", url: "https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" });
     sounds.push({ name: "Military Bugle", url: "https://actions.google.com/sounds/v1/alarms/bugle_tune.ogg" });
     sounds.push({ name: "Medium Bell Ringing", url: "https://actions.google.com/sounds/v1/alarms/medium_bell_ringing_near.ogg" });
+    sounds.push({ name: "Boing", url: "https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg" });
+    sounds.push({ name: "Cowbell", url: "https://actions.google.com/sounds/v1/cartoon/cowbell_ringing.ogg" });
+    sounds.push({ name: "Crazy bell", url: "https://actions.google.com/sounds/v1/cartoon/crazy_dinner_bell.ogg" });
+    sounds.push({ name: "Jingle Bells", url: "https://actions.google.com/sounds/v1/cartoon/jingle_bells.ogg" });
 
     // 2. Scan for custom MP3s
     const soundsDir = path.join(__dirname, 'public', 'sounds');
