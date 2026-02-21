@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Alarm Clocks - Ring-a-Ding-Ding!</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0f172a">
+    
+    <link href="https://fonts.cdnfonts.com/css/digital-7-mono" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --accent: #38bdf8;
+            --text: #f8fafc;
+            --danger: #ef4444;
+            --warning: #facc15;
+            --edit: #a855f7;
+            --secondary: #334155;
+            --success: #22c55e;
+            --overlay: rgba(0, 0, 0, 0.8);
+            --led-red: #ff3333;
+        }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0; 
+            padding: 0 15px 40px 15px; 
+        }
+
+        .container { max-width: 1100px; margin: 0 auto; }
+
+        /* --- HEADER --- */
+        .sticky-header {
+            position: sticky;
+            top: -1px;
+            background: var(--bg);
+            z-index: 100;
+            padding: 15px 0;
+            border-bottom: 1px solid transparent;
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap; 
+        }
+
+        .sticky-header.is-sticky {
+            border-bottom: 1px solid var(--secondary);
+            box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.7);
+            padding: 10px 0;
+        }
+
+        .header-left { flex: 1; }
+        .header-center { flex: 2; text-align: center; }
+        .header-right { flex: 1; text-align: right; }
+
+        h1 { margin: 0; font-size: 1.2rem; opacity: 0.6; text-transform: uppercase; letter-spacing: 1px; }
+
+        .live-clock { 
+            font-family: 'Digital-7 Mono', monospace; 
+            font-size: clamp(4.5rem, 15vw, 7.5rem); 
+            color: var(--led-red); 
+            text-shadow: 0 0 15px rgba(255, 51, 51, 0.6); 
+            line-height: 1;
+            margin: 5px 0;
+            letter-spacing: 2px;
+        }
+
+        .next-alarm-banner {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--warning);
+            margin-top: 5px;
+            font-family: monospace;
+            letter-spacing: 1px;
+            opacity: 0.8;
+        }
+
+        /* --- MODALS --- */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 9999; display: flex; justify-content: center; align-items: center;
+            background: var(--overlay);
+            backdrop-filter: blur(5px);
+        }
+
+        .ringing-mode { animation: blink-bg 0.6s infinite; background: rgba(0,0,0,0.9); }
+        .ringing-content { text-align: center; width: 100%; padding: 60px 0; border-top: 10px solid white; border-bottom: 10px solid white; background: rgba(0,0,0,0.8); }
+        
+        .big-time { 
+            font-family: 'Digital-7 Mono', monospace;
+            font-size: clamp(6rem, 25vw, 12rem); 
+            color: white;
+            text-shadow: 0 0 20px white;
+            line-height: 1; margin: 0; 
+        }
+        .big-label { font-size: clamp(1.5rem, 5vw, 3rem); font-weight: 700; text-transform: uppercase; margin-bottom: 40px; }
+        
+        .manager-window {
+            background: var(--card); width: 90%; max-width: 500px; max-height: 80vh;
+            border-radius: 12px; border: 1px solid var(--secondary);
+            display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+        .manager-header { padding: 15px; border-bottom: 1px solid var(--secondary); display: flex; justify-content: space-between; align-items: center; }
+        .manager-body { padding: 15px; overflow-y: auto; flex: 1; }
+        .profile-list { display: flex; flex-direction: column; gap: 10px; }
+        
+        .profile-row { 
+            display: flex; align-items: center; justify-content: space-between; 
+            background: var(--bg); padding: 12px 15px; border-radius: 8px; border: 1px solid var(--secondary);
+        }
+        .profile-info { display: flex; flex-direction: column; }
+        .profile-name { font-weight: bold; font-size: 1.1rem; }
+        .profile-count { font-size: 0.8rem; opacity: 0.5; margin-top: 2px; }
+        .profile-actions { display: flex; gap: 8px; }
+        
+        .btn-icon { background: none; border: none; cursor: pointer; font-size: 1.2rem; padding: 5px; opacity: 0.7; transition: opacity 0.2s; }
+        .btn-icon:hover { opacity: 1; transform: scale(1.1); }
+        .close-modal-btn { color: white; font-weight: bold; font-size: 1.5rem; }
+        
+        .create-profile-btn { 
+            width: 100%; padding: 12px; background: var(--accent); color: black; font-weight: bold; 
+            border: none; border-radius: 8px; margin-bottom: 15px; cursor: pointer;
+        }
+
+        .stop-btn {
+            background: white; color: black; font-size: 2rem; font-weight: 900;
+            padding: 20px 60px; border-radius: 15px; border: none; cursor: pointer; width: 80%; max-width: 400px;
+        }
+
+        @keyframes blink-bg {
+            0% { background-color: var(--danger); }
+            50% { background-color: var(--warning); }
+            100% { background-color: var(--danger); }
+        }
+
+        .hidden { display: none !important; }
+
+        /* --- FORM STYLING --- */
+        .alarm-creator { 
+            background: var(--card); padding: 15px 20px; border-radius: 12px; 
+            margin-top: 20px; margin-bottom: 25px; border: 2px solid transparent;
+        }
+        .alarm-creator.editing-mode { border-color: var(--edit); box-shadow: 0 0 15px rgba(168, 85, 247, 0.4); }
+        .alarm-creator.copy-mode { border-color: var(--success); box-shadow: 0 0 15px rgba(34, 197, 94, 0.4); }
+        
+        .input-row { display: flex; gap: 15px; margin-bottom: 12px; }
+        .field { display: flex; flex-direction: column; flex: 1; }
+        .field label { font-size: 0.7rem; margin-bottom: 4px; color: var(--accent); text-transform: uppercase; font-weight: bold; }
+        input, select { padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; font-size: 1rem; }
+        input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
+
+        .days-section { display: flex; align-items: center; gap: 20px; margin-bottom: 15px; padding-top: 15px; border-top: 1px solid #334155; flex-wrap: wrap; }
+        .quick-select-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .mini-btn { font-size: 0.8rem; padding: 8px 12px; border-radius: 6px; background: var(--secondary); color: white; border: none; cursor: pointer; flex: 1; }
+        .mini-btn:hover { background: var(--accent); color: black; }
+        
+        .days-picker { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.9rem; }
+        .days-picker label { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 5px; background: rgba(255,255,255,0.05); border-radius: 4px; }
+        
+        .add-btn { background: var(--accent); color: #000; width: 100%; padding: 14px; border-radius: 8px; font-weight: bold; border: none; cursor: pointer; font-size: 1rem; }
+        .update-btn { background: var(--edit) !important; color: white !important; }
+        .copy-confirm-btn { background: var(--success) !important; color: black !important; }
+
+        /* --- GRID & CARDS --- */
+        .alarm-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(var(--card-width, 240px), 1fr)); 
+            gap: 15px; 
+        }
+        .alarm-card { 
+            background: var(--card); padding: 20px; border-radius: 12px; 
+            border-left: 6px solid var(--accent); position: relative; 
+            transition: all 0.3s ease;
+        }
+        .alarm-card.inactive { opacity: 0.5; border-left-color: #475569; }
+        
+        /* Highlight for the Next Alarm */
+        .next-alarm-highlight {
+            border-color: var(--warning) !important;
+            box-shadow: 0 0 15px rgba(250, 204, 21, 0.3) !important;
+            background: rgba(250, 204, 21, 0.05) !important;
+        }
+
+        .card-time { font-size: var(--font-size, 2.2rem); font-weight: 900; margin-bottom: 5px; display: block;}
+        .card-toggle { position: absolute; top: 15px; right: 15px; transform: scale(1.5); cursor: pointer; }
+        .card-info .sound-tag { font-size: 0.7rem; color: var(--accent); background: rgba(56, 189, 248, 0.1); padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 4px; }
+        .card-actions { display: flex; gap: 10px; margin-top: 15px; border-top: 1px solid #334155; padding-top: 10px; }
+        
+        .edit-btn, .delete-btn, .copy-btn { background: none; border: none; cursor: pointer; font-weight: bold; font-size: 0.8rem; padding: 5px 8px; flex: 1; border-radius: 4px;}
+        .edit-btn { background: rgba(168, 85, 247, 0.1); color: var(--edit); }
+        .delete-btn { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+        .copy-btn { background: rgba(34, 197, 94, 0.1); color: var(--success); }
+
+        .sync-status { font-size: 0.7rem; opacity: 0.7; margin-top: 5px; font-family: monospace; display: flex; align-items: center; gap: 8px;}
+
+        /* Controls Row */
+        .controls-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; gap: 10px; flex-wrap: wrap;}
+        .view-controls { display: flex; gap: 10px; align-items: center; background: #1e293b; padding: 5px 10px; border-radius: 8px;}
+        input[type=range] { width: 60px; accent-color: var(--accent); padding: 0; height: 5px; }
+
+        /* Follow Button Style */
+        .follow-btn {
+            background: transparent; border: 1px solid var(--secondary); color: var(--text);
+            padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; cursor: pointer;
+            transition: all 0.2s; opacity: 0.7;
+        }
+        .follow-btn.active {
+            background: rgba(34, 197, 94, 0.2); border-color: var(--success); 
+            color: var(--success); opacity: 1; font-weight: bold;
+        }
+
+        /* --- MOBILE STYLES --- */
+        @media (max-width: 768px) {
+            .header-left, .header-right { flex: 1 1 100%; text-align: center; margin-bottom: 10px; }
+            .header-center { flex: 1 1 100%; order: -1; margin-bottom: 15px; }
+            .input-row { flex-direction: column; gap: 10px; } 
+            .days-section { flex-direction: column; align-items: stretch; gap: 10px; }
+            .days-picker { justify-content: space-between; }
+            .days-picker label { flex: 1 1 30%; justify-content: center; padding: 10px; background: var(--secondary); border-radius: 6px; }
+            .profile-management { display: flex; justify-content: center; gap: 10px; }
+            .sync-status { justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="alarmOverlay" class="modal-overlay hidden ringing-mode">
+        <div class="ringing-content">
+            <div id="ringingTime" class="big-time">00:00:00</div>
+            <div id="ringingLabel" class="big-label">ALARM</div>
+            <button class="stop-btn" onclick="stopAlarm()">STOP ALARM</button>
+        </div>
+    </div>
+
+    <div id="managerOverlay" class="modal-overlay hidden" onclick="if(event.target === this) closeManager()">
+        <div class="manager-window">
+            <div class="manager-header">
+                <h3 style="margin:0">Profile Manager</h3>
+                <button class="btn-icon close-modal-btn" onclick="closeManager()">✕</button>
+            </div>
+            <div class="manager-body">
+                <button class="create-profile-btn" onclick="createNewProfile()">➕ Create New Profile</button>
+                <div id="managerList" class="profile-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <header class="sticky-header" id="mainHeader">
+            <div class="header-left">
+                <h1>⏰ Ring-a-Ding-Ding!</h1>
+                <div id="syncStatus" class="sync-status">
+                    <span>Sync: Connecting...</span>
+                </div>
+            </div>
+            <div class="header-center">
+                <div id="liveClock" class="live-clock">00:00:00</div>
+                <div id="nextAlarmDisplay" class="next-alarm-banner">--:--:--</div>
+                
+                <div style="margin-top: 10px;">
+                    <button id="followBtn" class="follow-btn" onclick="toggleFollow()">Follow</button>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="profile-management">
+                    <div style="margin-bottom: 5px;">
+                        <label style="font-size: 0.7rem; opacity: 0.7;">PROFILE: </label>
+                        <select id="profileSelect" onchange="switchProfile(this.value)" style="padding: 4px; font-size: 0.8rem; margin-right:5px;"></select>
+                        <button class="secondary" onclick="openManager()" style="font-size: 1rem;">⚙️</button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <section id="creatorSection" class="alarm-creator">
+            <h3 id="formTitle" style="margin-top:0; font-size: 0.85rem; margin-bottom: 12px; opacity: 0.8;">CREATE NEW ALARM</h3>
+            
+            <div class="input-row">
+                <div class="field">
+                    <label>Time (HH:MM:SS)</label>
+                    <input type="time" id="alarmTime" step="1" required>
+                </div>
+                <div class="field">
+                    <label>Label</label>
+                    <input type="text" id="alarmLabel" placeholder="Alarm Label">
+                </div>
+                <div class="field">
+                    <label>Sound Effect</label>
+                    <select id="alarmSound" onchange="previewSound()">
+                        <option value="https://actions.google.com/sounds/v1/alarms/beep_short.ogg">Classic Beep</option>
+                        <option value="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg">Digital Watch</option>
+                        <option value="https://actions.google.com/sounds/v1/alarms/bugle_tune.ogg">Military Bugle</option>
+                        <option value="https://actions.google.com/sounds/v1/alarms/medium_bell_ringing_near.ogg">Medium Bell Ringing</option>
+                        <option value="https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg">Boing</option>
+                        <option value="https://actions.google.com/sounds/v1/cartoon/cowbell_ringing.ogg">Cowbell</option>
+                        <option value="https://actions.google.com/sounds/v1/cartoon/crazy_dinner_bell.ogg">Crazy bell</option>
+                        <option value="https://actions.google.com/sounds/v1/cartoon/jingle_bells.ogg">Jingle Bells</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="days-section">
+                <div class="quick-select-row">
+                    <button class="mini-btn" onclick="setDays('all')">All Days</button>
+                    <button class="mini-btn" onclick="setDays('weekdays')">Weekdays</button>
+                    <button class="mini-btn" onclick="setDays('weekends')">Weekends</button>
+                    <button class="mini-btn" onclick="setDays('none')">Clear</button>
+                </div>
+                <div class="days-picker" id="daysPicker">
+                    <label><input type="checkbox" value="1"> Mon</label>
+                    <label><input type="checkbox" value="2"> Tue</label>
+                    <label><input type="checkbox" value="3"> Wed</label>
+                    <label><input type="checkbox" value="4"> Thu</label>
+                    <label><input type="checkbox" value="5"> Fri</label>
+                    <label><input type="checkbox" value="6"> Sat</label>
+                    <label><input type="checkbox" value="0"> Sun</label>
+                </div>
+            </div>
+
+            <div id="copyTargetWrapper" class="field hidden" style="margin-bottom: 15px; border-top:1px solid #334155; padding-top:10px;">
+                <label style="color:var(--success); font-size:0.9rem;">↪ Copy To Profile:</label>
+                <select id="copyTargetProfile" style="width:100%; margin-top:5px; border-color:var(--success);"></select>
+            </div>
+
+            <button id="submitBtn" class="add-btn" onclick="handleSubmit()">Add Alarm</button>
+            <button id="cancelEditBtn" class="secondary hidden" style="width:100%; margin: 10px 0 0 0;" onclick="cancelEdit()">Cancel Edit</button>
+        </section>
+
+        <div class="controls-row">
+            <h3>Active Alarms</h3>
+            <div style="display:flex; gap: 15px; align-items:center;">
+                <div class="view-controls">
+                    <label style="font-size:0.7rem; color:var(--accent)">SIZE</label>
+                    <span style="font-size:0.8rem">🔍</span>
+                    <input type="range" min="1" max="2" value="1" step="1" id="sizeSlider" oninput="updateGridSize(this.value)">
+                </div>
+                <div class="view-controls">
+                    <label style="font-size:0.7rem; color:var(--accent)">SORT</label>
+                    <select id="sortOrder" onchange="updateSort(this.value)" style="padding:2px 6px; font-size:0.8rem; background: transparent; border:none; color: white;">
+                        <option value="earliest">Earliest</option>
+                        <option value="latest">Latest</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        
+        <div id="alarmGrid" class="alarm-grid"></div>
+    </div>
+
+    <audio id="audioPreview"></audio>
+    <audio id="mainAlarmAudio" loop></audio>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+    <script>
+        // --- CONFIGURATION ---
+        const SERVER_URL = "https://alarm-socket-server.onrender.com"; 
+        const socket = io(SERVER_URL);
+
+        let localPrefs = {
+            currentProfile: "Default",
+            sortOrder: "earliest",
+            cardSize: 1,
+            followMode: false
+        };
+
+        let cloudData = {
+            profiles: { "Default": [] },
+            lastModified: "Never"
+        };
+
+        let editingAlarmId = null;
+        let ringTimeout = null;
+        let currentNextAlarmId = null;
+        let fadeInterval = null;
+        let emergencyBeepInterval = null;
+
+        // --- SOCKET EVENTS ---
+        socket.on('connect', () => console.log("Connected to cloud!"));
+
+        socket.on('init-data', (serverData) => {
+            console.log("Received Init Data");
+            document.getElementById('syncStatus').innerHTML = "Sync: <span style='color:var(--success)'>⚡ LIVE</span>";
+            if (serverData.profiles) {
+                cloudData = serverData;
+                refreshUI();
+            }
+        });
+
+        socket.on('sync-update', (serverData) => {
+            console.log("Received Live Update");
+            const header = document.getElementById('mainHeader');
+            header.style.backgroundColor = '#334155';
+            setTimeout(() => header.style.backgroundColor = '', 300);
+
+            if (serverData.profiles) {
+                cloudData = serverData;
+                refreshUI();
+            }
+        });
+
+        // --- DYNAMIC SOUND LISTENER ---
+        socket.on('available-sounds', (sounds) => {
+            console.log("Received dynamic sound list from server");
+            const select = document.getElementById('alarmSound');
+            const currentVal = select.value; 
+            
+            select.innerHTML = ''; 
+            
+            sounds.forEach(sound => {
+                const opt = document.createElement('option');
+                opt.value = sound.url;
+                opt.textContent = sound.name;
+                select.appendChild(opt);
+            });
+            
+            if (currentVal && sounds.find(s => s.url === currentVal)) {
+                select.value = currentVal;
+            }
+        });
+
+        socket.on('disconnect', () => {
+            document.getElementById('syncStatus').innerHTML = "Sync: <span style='color:var(--danger)'>OFFLINE</span>";
+        });
+
+        // --- CORE LOGIC ---
+        function init() {
+            startClock();
+            
+            const savedPrefs = localStorage.getItem('alarm_local_prefs');
+            if (savedPrefs) {
+                localPrefs = JSON.parse(savedPrefs);
+                if (localPrefs.cardSize > 2) localPrefs.cardSize = 2; 
+            }
+
+            document.getElementById('sortOrder').value = localPrefs.sortOrder;
+            document.getElementById('sizeSlider').value = localPrefs.cardSize;
+            updateGridSize(localPrefs.cardSize);
+            
+            updateFollowUI();
+
+            // Mobile Audio Unlocker
+            document.body.addEventListener('click', enableMobileAudio, { once: true });
+            document.body.addEventListener('touchstart', enableMobileAudio, { once: true });
+
+            // Disable Follow on Interaction
+            window.addEventListener('wheel', disableFollowOnInteraction);
+            window.addEventListener('touchmove', disableFollowOnInteraction);
+            window.addEventListener('keydown', (e) => {
+                if(e.key.startsWith('Arrow')) disableFollowOnInteraction();
+            });
+            
+            const header = document.querySelector('.sticky-header');
+            const observer = new IntersectionObserver(
+                ([e]) => e.target.classList.toggle('is-sticky', e.intersectionRatio < 1),
+                { threshold: [1] }
+            );
+            observer.observe(header);
+        }
+
+        function enableMobileAudio() {
+            const audio = document.getElementById('mainAlarmAudio');
+            audio.src = 'https://actions.google.com/sounds/v1/alarms/beep_short.ogg'; 
+            audio.volume = 0;
+            audio.play().then(() => {
+                audio.pause();
+                audio.currentTime = 0;
+                audio.volume = 1;
+                console.log("🔊 Mobile Audio System Unlocked");
+            }).catch(e => console.log("Audio unlock failed (will try again next tap)", e));
+        }
+
+        function refreshUI() {
+            if (!cloudData.profiles[localPrefs.currentProfile]) {
+                localPrefs.currentProfile = "Default";
+                if (!cloudData.profiles["Default"]) cloudData.profiles["Default"] = [];
+                saveLocalPrefs();
+            }
+            renderAlarms();
+            updateProfileDropdown();
+            if(!document.getElementById('managerOverlay').classList.contains('hidden')) {
+                renderManagerList();
+            }
+        }
+
+        function syncToCloud() {
+            cloudData.lastModified = new Date().toLocaleString();
+            socket.emit('update-data', cloudData); 
+        }
+
+        function saveLocalPrefs() {
+            localStorage.setItem('alarm_local_prefs', JSON.stringify(localPrefs));
+        }
+
+        // --- FOLLOW MODE LOGIC ---
+        function toggleFollow() {
+            localPrefs.followMode = !localPrefs.followMode;
+            saveLocalPrefs();
+            updateFollowUI();
+            
+            if(localPrefs.followMode) {
+                currentNextAlarmId = null; 
+                updateCountdown(new Date()); 
+            }
+        }
+
+        function updateFollowUI() {
+            const btn = document.getElementById('followBtn');
+            if (localPrefs.followMode) {
+                btn.classList.add('active');
+                btn.textContent = "Follow ON";
+            } else {
+                btn.classList.remove('active');
+                btn.textContent = "Follow";
+            }
+        }
+
+        function disableFollowOnInteraction() {
+            if (localPrefs.followMode) {
+                localPrefs.followMode = false;
+                saveLocalPrefs();
+                updateFollowUI();
+            }
+        }
+
+        function scrollToAlarm(id) {
+            const el = document.getElementById(`alarm-card-${id}`);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        function populateCopyTargets() {
+            const sel = document.getElementById('copyTargetProfile');
+            sel.innerHTML = '';
+            let keys = Object.keys(cloudData.profiles).sort((a, b) => a.localeCompare(b));
+            
+            if (keys.length > 1 && keys.includes("Default")) {
+                keys = keys.filter(k => k !== "Default");
+            }
+
+            keys.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p; 
+                opt.textContent = p;
+                if (p === localPrefs.currentProfile) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        }
+
+        // --- PROFILE MANAGER ---
+        function openManager() {
+            renderManagerList();
+            document.getElementById('managerOverlay').classList.remove('hidden');
+        }
+
+        function closeManager() {
+            document.getElementById('managerOverlay').classList.add('hidden');
+        }
+
+        function renderManagerList() {
+            const list = document.getElementById('managerList');
+            list.innerHTML = '';
+            
+            let keys = Object.keys(cloudData.profiles).sort((a, b) => a.localeCompare(b));
+            const showDefault = keys.length === 1 && keys[0] === "Default";
+            if (!showDefault) keys = keys.filter(k => k !== "Default");
+            
+            keys.forEach(name => {
+                const row = document.createElement('div');
+                row.className = 'profile-row';
+                
+                const isActive = name === localPrefs.currentProfile ? " (Active)" : "";
+                const nameStyle = name === localPrefs.currentProfile ? "color: var(--accent)" : "";
+                const count = cloudData.profiles[name] ? cloudData.profiles[name].length : 0;
+                const alarmText = count === 1 ? "Alarm" : "Alarms";
+
+                row.innerHTML = `
+                    <div class="profile-info">
+                        <div class="profile-name" style="${nameStyle}">${name}${isActive}</div>
+                        <div class="profile-count">${count} ${alarmText}</div>
+                    </div>
+                    <div class="profile-actions">
+                        <button class="btn-icon" title="Rename" onclick="renameProfile('${name}')">✏️</button>
+                        <button class="btn-icon" style="color:var(--danger)" title="Delete" onclick="deleteProfile('${name}')">❌</button>
+                    </div>
+                `;
+                list.appendChild(row);
+            });
+        }
+
+        function createNewProfile() {
+            const name = prompt("Enter new profile name:");
+            if (name) {
+                if (cloudData.profiles[name]) return alert("Profile already exists!");
+                cloudData.profiles[name] = [];
+                localPrefs.currentProfile = name;
+                saveLocalPrefs();
+                syncToCloud();
+                refreshUI(); 
+            }
+        }
+
+        function renameProfile(oldName) {
+            if (oldName === "Default") return alert("Cannot rename Default profile.");
+            const newName = prompt(`Rename "${oldName}" to:`, oldName);
+            if (newName && newName !== oldName) {
+                if (cloudData.profiles[newName]) return alert("Name already exists!");
+                cloudData.profiles[newName] = cloudData.profiles[oldName];
+                delete cloudData.profiles[oldName];
+                if (localPrefs.currentProfile === oldName) {
+                    localPrefs.currentProfile = newName;
+                    saveLocalPrefs();
+                }
+                syncToCloud();
+                refreshUI();
+            }
+        }
+
+        function deleteProfile(name) {
+            if (name === "Default") return alert("Cannot delete Default profile.");
+            const count = cloudData.profiles[name].length;
+            const extraWarning = count > 0 ? ` It contains ${count} alarms.` : "";
+            if (confirm(`Delete "${name}"?${extraWarning}`)) {
+                delete cloudData.profiles[name];
+                if (localPrefs.currentProfile === name) {
+                    localPrefs.currentProfile = "Default";
+                    saveLocalPrefs();
+                }
+                syncToCloud();
+                refreshUI();
+            }
+        }
+
+        // --- ALARM LOGIC ---
+        function handleSubmit() {
+            if (window.isSecureContext && Notification.permission === 'default') Notification.requestPermission();
+            let time = document.getElementById('alarmTime').value;
+            if (!time) return alert("Select a time.");
+            if (time.length === 5) time += ":00";
+            
+            const alarmData = {
+                id: editingAlarmId || Date.now(),
+                time,
+                label: document.getElementById('alarmLabel').value || "",
+                sound: document.getElementById('alarmSound').value,
+                soundName: document.getElementById('alarmSound').options[document.getElementById('alarmSound').selectedIndex].text,
+                days: Array.from(document.querySelectorAll('#daysPicker input:checked')).map(cb => parseInt(cb.value)),
+                enabled: true
+            };
+
+            const isCopyMode = document.getElementById('creatorSection').classList.contains('copy-mode');
+            let targetProfile = localPrefs.currentProfile;
+
+            if (isCopyMode) {
+                targetProfile = document.getElementById('copyTargetProfile').value;
+                alarmData.id = Date.now(); 
+            }
+
+            if (!cloudData.profiles[targetProfile]) return alert("Target profile does not exist!");
+            const profile = cloudData.profiles[targetProfile];
+
+            const conflict = profile.find(a => a.time === alarmData.time && a.id !== alarmData.id);
+            if (conflict) {
+                if(!confirm(`⚠️ Conflict Detected!\n\nProfile "${targetProfile}" already has an alarm at ${alarmData.time}.\n\nSave anyway?`)) {
+                    return; 
+                }
+            }
+
+            if (editingAlarmId && !isCopyMode) {
+                const idx = profile.findIndex(a => a.id === editingAlarmId);
+                if (idx !== -1) profile[idx] = alarmData;
+            } else {
+                profile.push(alarmData);
+            }
+
+            syncToCloud();
+            if (targetProfile !== localPrefs.currentProfile) alert(`✅ Alarm sent to "${targetProfile}" profile.`);
+            cancelEdit(); 
+        }
+
+        function renderAlarms() {
+            const grid = document.getElementById('alarmGrid');
+            grid.innerHTML = '';
+            
+            const alarms = cloudData.profiles[localPrefs.currentProfile] || [];
+            
+            alarms.sort((a, b) => 
+                localPrefs.sortOrder === 'earliest' ? a.time.localeCompare(b.time) : b.time.localeCompare(a.time)
+            );
+
+            alarms.forEach(alarm => {
+                const card = document.createElement('div');
+                card.id = `alarm-card-${alarm.id}`;
+                card.className = `alarm-card ${alarm.enabled ? '' : 'inactive'}`;
+                let displayTime = alarm.time.length === 5 ? alarm.time + ":00" : alarm.time;
+                card.innerHTML = `
+                    <input type="checkbox" class="card-toggle" ${alarm.enabled ? 'checked' : ''} onchange="toggleAlarm(${alarm.id})">
+                    <span class="card-time">${displayTime}</span>
+                    <div class="card-info">
+                        <div style="font-weight:bold">${alarm.label || 'Alarm'}</div>
+                        <div style="font-size:0.8rem; opacity: 0.8">${alarm.days.map(d => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d]).join(', ') || 'Once'}</div>
+                        <div class="sound-tag">🔉 ${alarm.soundName}</div>
+                    </div>
+                    <div class="card-actions">
+                        <button class="edit-btn" onclick="editAlarm(${alarm.id})">EDIT</button>
+                        <button class="copy-btn" onclick="copyAlarm(${alarm.id})">COPY</button>
+                        <button class="delete-btn" onclick="deleteAlarm(${alarm.id})">DELETE</button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function updateGridSize(val) {
+            localPrefs.cardSize = val;
+            saveLocalPrefs();
+            const root = document.documentElement;
+            if (val == 1) { 
+                root.style.setProperty('--card-width', '240px');
+                root.style.setProperty('--font-size', '2.2rem');
+            } else { 
+                root.style.setProperty('--card-width', '320px');
+                root.style.setProperty('--font-size', '3.5rem');
+            }
+        }
+
+        function updateSort(val) {
+            localPrefs.sortOrder = val;
+            saveLocalPrefs();
+            renderAlarms(); 
+        }
+
+        function copyAlarm(id) {
+            const alarm = cloudData.profiles[localPrefs.currentProfile].find(a => a.id === id);
+            if (!alarm) return;
+
+            let editTime = alarm.time.length === 5 ? alarm.time + ":00" : alarm.time;
+            document.getElementById('alarmTime').value = editTime;
+            document.getElementById('alarmLabel').value = alarm.label + " (Copy)"; 
+            document.getElementById('alarmSound').value = alarm.sound;
+            document.querySelectorAll('#daysPicker input').forEach(cb => cb.checked = alarm.days.includes(parseInt(cb.value)));
+            
+            populateCopyTargets();
+            document.getElementById('copyTargetWrapper').classList.remove('hidden');
+
+            editingAlarmId = id; 
+            document.getElementById('formTitle').textContent = "COPYING ALARM";
+            document.getElementById('submitBtn').textContent = "Save Duplicate";
+            document.getElementById('submitBtn').classList.add('copy-confirm-btn');
+            document.getElementById('creatorSection').classList.add('copy-mode');
+            document.getElementById('cancelEditBtn').classList.remove('hidden');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function editAlarm(id) {
+            const alarm = cloudData.profiles[localPrefs.currentProfile].find(a => a.id === id);
+            editingAlarmId = id;
+            let editTime = alarm.time.length === 5 ? alarm.time + ":00" : alarm.time;
+            document.getElementById('alarmTime').value = editTime;
+            document.getElementById('alarmLabel').value = alarm.label;
+            document.getElementById('alarmSound').value = alarm.sound;
+            document.querySelectorAll('#daysPicker input').forEach(cb => cb.checked = alarm.days.includes(parseInt(cb.value)));
+            
+            document.getElementById('formTitle').textContent = "EDIT ALARM";
+            document.getElementById('submitBtn').textContent = "Update Alarm";
+            document.getElementById('submitBtn').classList.add('update-btn');
+            document.getElementById('creatorSection').classList.add('editing-mode');
+            document.getElementById('cancelEditBtn').classList.remove('hidden');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function cancelEdit() {
+            editingAlarmId = null;
+            document.getElementById('alarmTime').value = '';
+            document.getElementById('alarmLabel').value = '';
+            document.querySelectorAll('#daysPicker input').forEach(cb => cb.checked = false);
+
+            document.getElementById('formTitle').textContent = "CREATE NEW ALARM";
+            document.getElementById('submitBtn').textContent = "Add Alarm";
+            document.getElementById('submitBtn').className = 'add-btn'; 
+            document.getElementById('creatorSection').className = 'alarm-creator'; 
+            document.getElementById('cancelEditBtn').classList.add('hidden');
+            document.getElementById('copyTargetWrapper').classList.add('hidden');
+        }
+
+        function toggleAlarm(id) {
+            const alarm = cloudData.profiles[localPrefs.currentProfile].find(a => a.id === id);
+            alarm.enabled = !alarm.enabled;
+            syncToCloud();
+        }
+
+        function deleteAlarm(id) {
+            const profile = cloudData.profiles[localPrefs.currentProfile];
+            cloudData.profiles[localPrefs.currentProfile] = profile.filter(a => a.id !== id);
+            syncToCloud();
+        }
+
+        function switchProfile(val) { 
+            cancelEdit(); 
+            localPrefs.currentProfile = val; 
+            saveLocalPrefs();
+            refreshUI(); 
+        }
+
+        function updateProfileDropdown() {
+            const sel = document.getElementById('profileSelect');
+            sel.innerHTML = '';
+            if (!cloudData.profiles) return;
+            let keys = Object.keys(cloudData.profiles).sort((a, b) => a.localeCompare(b));
+            
+            if (keys.length > 1 && keys.includes("Default")) {
+                keys = keys.filter(k => k !== "Default");
+            }
+
+            keys.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p; opt.textContent = p;
+                if (p === localPrefs.currentProfile) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        }
+
+        function setDays(type) {
+            document.querySelectorAll('#daysPicker input').forEach(cb => {
+                const val = parseInt(cb.value);
+                cb.checked = (type === 'all') || (type === 'weekdays' && val >= 1 && val <= 5) || (type === 'weekends' && (val === 0 || val === 6));
+            });
+        }
+
+        function startClock() {
+            setInterval(() => {
+                const now = new Date();
+                const h = now.getHours().toString().padStart(2, '0');
+                const m = now.getMinutes().toString().padStart(2, '0');
+                const s = now.getSeconds().toString().padStart(2, '0');
+                const currentTime = `${h}:${m}:${s}`; 
+                document.getElementById('liveClock').textContent = currentTime;
+
+                if (cloudData.profiles && cloudData.profiles[localPrefs.currentProfile]) {
+                    const currentAlarms = cloudData.profiles[localPrefs.currentProfile];
+                    currentAlarms.forEach(alarm => {
+                        if (alarm.enabled) {
+                            let checkTime = alarm.time.length === 5 ? alarm.time + ":00" : alarm.time;
+                            if (checkTime === currentTime) {
+                                const currentDay = now.getDay();
+                                if (alarm.days.length === 0 || alarm.days.includes(currentDay)) triggerAlarm(alarm);
+                            }
+                        }
+                    });
+                    updateCountdown(now);
+                }
+            }, 1000);
+        }
+
+        function updateCountdown(now) {
+            if (!cloudData.profiles || !cloudData.profiles[localPrefs.currentProfile]) return;
+            const alarms = cloudData.profiles[localPrefs.currentProfile].filter(a => a.enabled);
+            const display = document.getElementById('nextAlarmDisplay');
+            if (alarms.length === 0) { 
+                display.textContent = "NO ALARMS ACTIVE"; 
+                document.querySelectorAll('.alarm-card').forEach(el => el.classList.remove('next-alarm-highlight'));
+                return; 
+            }
+
+            let nextOccurrences = [];
+            alarms.forEach(alarm => {
+                const parts = alarm.time.split(':').map(Number);
+                const hrs = parts[0], mins = parts[1], secs = parts[2] || 0;
+
+                if (alarm.days.length > 0) {
+                    alarm.days.forEach(day => {
+                        let date = new Date(now);
+                        date.setHours(hrs, mins, secs, 0);
+                        let daysUntil = (day - now.getDay() + 7) % 7;
+                        if (daysUntil === 0 && date <= now) daysUntil = 7;
+                        date.setDate(date.getDate() + daysUntil);
+                        nextOccurrences.push({ date, alarm });
+                    });
+                } else {
+                    let date = new Date(now);
+                    date.setHours(hrs, mins, secs, 0);
+                    if (date <= now) date.setDate(date.getDate() + 1);
+                    nextOccurrences.push({ date, alarm });
+                }
+            });
+
+            nextOccurrences.sort((a, b) => a.date - b.date);
+            const next = nextOccurrences[0];
+            const diff = next.date - now;
+            const h = Math.floor(diff / 3600000).toString().padStart(2, '0');
+            const m = Math.floor((diff % 3600000) / 60000).toString().padStart(2, '0');
+            const s = Math.floor((diff % 60000) / 1000).toString().padStart(2, '0');
+            const labelText = next.alarm.label.trim() || "ALARM";
+            display.textContent = `NEXT [${labelText}] ${h}:${m}:${s}`;
+
+            document.querySelectorAll('.alarm-card').forEach(el => el.classList.remove('next-alarm-highlight'));
+            const nextCard = document.getElementById(`alarm-card-${next.alarm.id}`);
+            if (nextCard) nextCard.classList.add('next-alarm-highlight');
+
+            if (localPrefs.followMode && next.alarm.id !== currentNextAlarmId) {
+                currentNextAlarmId = next.alarm.id;
+                scrollToAlarm(currentNextAlarmId);
+            }
+        }
+
+        // --- THE UNBREAKABLE FALLBACK SYNTHESIZER ---
+        function playEmergencyBeep() {
+            console.warn("⚠️ Audio unreachable! Firing offline emergency beep.");
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return; 
+            
+            const ctx = new AudioContext();
+            
+            emergencyBeepInterval = setInterval(() => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                
+                osc.type = 'square'; 
+                osc.frequency.setValueAtTime(880, ctx.currentTime); 
+                gain.gain.setValueAtTime(0.5, ctx.currentTime);
+                
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                
+                osc.start();
+                osc.stop(ctx.currentTime + 0.15); 
+            }, 500); 
+        }
+
+        // --- UPDATED AUDIO TRIGGER ---
+        function triggerAlarm(alarm) {
+            stopAlarm(); 
+            
+            // Visuals
+            document.getElementById('ringingTime').textContent = alarm.time;
+            document.getElementById('ringingLabel').textContent = alarm.label || "ALARM";
+            document.getElementById('alarmOverlay').classList.remove('hidden');
+            
+            const player = document.getElementById('mainAlarmAudio');
+            
+            // 1. ATTACH THE FAILSAFE
+            player.onerror = () => {
+                playEmergencyBeep();
+            };
+
+            // 2. Try the primary sound
+            player.src = alarm.sound;
+            player.volume = 0; 
+            
+            const playPromise = player.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(error => {
+                    console.log("⚠️ Audio Blocked by Browser. Tap required.");
+                });
+            }
+
+            // Fade In Effect
+            if (fadeInterval) clearInterval(fadeInterval);
+            fadeInterval = setInterval(() => {
+                if (player.volume < 1) player.volume = Math.min(1, player.volume + 0.05);
+                else clearInterval(fadeInterval);
+            }, 200);
+
+            if (window.isSecureContext && Notification.permission === 'granted') {
+                new Notification(`ALARM: ${alarm.label || 'Time is up!'}`);
+            }
+            
+            ringTimeout = setTimeout(() => stopAlarm(), 300000);
+        }
+
+        function stopAlarm() {
+            const player = document.getElementById('mainAlarmAudio');
+            player.pause();
+            player.currentTime = 0;
+            
+            // Clear the Failsafe
+            player.onerror = null; 
+            if (emergencyBeepInterval) clearInterval(emergencyBeepInterval);
+            
+            if (ringTimeout) clearTimeout(ringTimeout);
+            if (fadeInterval) clearInterval(fadeInterval);
+            
+            document.getElementById('alarmOverlay').classList.add('hidden');
+        }
+
+        function previewSound() {
+            const player = document.getElementById('audioPreview');
+            player.src = document.getElementById('alarmSound').value;
+            player.play();
+            setTimeout(() => player.pause(), 2500);
+        }
+
+        init();
+    </script>
+</body>
+</html>
