@@ -69,7 +69,7 @@ async function loadFromBackup() {
     console.log("📥 Fetching backup from Google Sheets...");
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
 
         const response = await fetch(BACKUP_URL, { signal: controller.signal });
         clearTimeout(timeoutId);
