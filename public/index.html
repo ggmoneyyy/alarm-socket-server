@@ -377,6 +377,7 @@
             lastModified: "Never"
         };
 
+        let currentServerVersion = null; // NEW: Tracks the current backend version
         let editingAlarmId = null;
         let ringTimeout = null;
         let currentNextAlarmId = null;
@@ -385,6 +386,22 @@
 
         // --- SOCKET EVENTS ---
         socket.on('connect', () => console.log("Connected to cloud!"));
+
+        // --- AUTO-REFRESH ON DEPLOY ---
+        socket.on('server-version', (version) => {
+            if (currentServerVersion === null) {
+                // First time connecting, remember this boot version
+                currentServerVersion = version;
+            } else if (currentServerVersion !== version) {
+                // The server rebooted with new code! Force a hard refresh.
+                console.log("Server update detected! Refreshing page...");
+                document.getElementById('syncStatus').innerHTML = "Sync: <span style='color:var(--warning)'>UPDATING...</span>";
+                
+                setTimeout(() => {
+                    window.location.reload(true);
+                }, 1000); 
+            }
+        });
 
         socket.on('init-data', (serverData) => {
             console.log("Received Init Data");
