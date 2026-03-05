@@ -264,8 +264,9 @@
                 <div id="liveClock" class="live-clock">00:00:00</div>
                 <div id="nextAlarmDisplay" class="next-alarm-banner">--:--:--</div>
                 
-                <div style="margin-top: 10px;">
+                <div style="margin-top: 10px; display: flex; justify-content: center; gap: 10px;">
                     <button id="followBtn" class="follow-btn" onclick="toggleFollow()">Follow</button>
+                    <button class="follow-btn" style="border-color: var(--accent); color: var(--accent);" onclick="scrollToCreator()">+ Alarm</button>
                 </div>
             </div>
             <div class="header-right">
@@ -535,6 +536,29 @@
             if (el) {
                 el.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
+        }
+
+        function scrollToCreator() {
+            // 1. Turn off Follow Mode if it is active
+            if (localPrefs.followMode) {
+                localPrefs.followMode = false;
+                saveLocalPrefs();
+                updateFollowUI();
+            }
+            
+            // 2. Scroll smoothly to the creation form
+            const creator = document.getElementById('creatorSection');
+            creator.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // 3. Flash the form's border blue so they know exactly where to look
+            creator.style.transition = 'border-color 0.3s ease, box-shadow 0.3s ease';
+            creator.style.borderColor = 'var(--accent)';
+            creator.style.boxShadow = '0 0 15px rgba(56, 189, 248, 0.4)';
+            
+            setTimeout(() => {
+                creator.style.borderColor = 'transparent';
+                creator.style.boxShadow = 'none';
+            }, 1500);
         }
 
         function populateCopyTargets() {
