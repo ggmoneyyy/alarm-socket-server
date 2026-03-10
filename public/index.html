@@ -30,10 +30,10 @@
             background-color: var(--bg);
             color: var(--text);
             margin: 0; 
-            padding: 0 15px 40px 15px; 
+            padding: 0 2% 40px 2%; 
         }
 
-        .container { max-width: 1100px; margin: 0 auto; }
+        .container { max-width: 98%; margin: 0 auto; }
 
         /* --- HEADER --- */
         .sticky-header {
@@ -64,7 +64,7 @@
 
         .live-clock { 
             font-family: 'Digital-7 Mono', monospace; 
-            font-size: clamp(4.5rem, 15vw, 7.5rem); 
+            font-size: clamp(4.5rem, 15vw, 12rem); 
             color: var(--led-red); 
             text-shadow: 0 0 15px rgba(255, 51, 51, 0.6); 
             line-height: 1;
@@ -72,14 +72,25 @@
             letter-spacing: 2px;
         }
 
+        /* NEW: Next & Then banners scale dynamically */
         .next-alarm-banner {
-            font-size: 1.2rem;
+            font-size: var(--next-size, 1.2rem);
             font-weight: bold;
             color: var(--warning);
             margin-top: 5px;
             font-family: monospace;
             letter-spacing: 1px;
-            opacity: 0.8;
+            opacity: 0.9;
+        }
+
+        .following-alarm {
+            font-size: calc(var(--next-size, 1.2rem) * 0.7); 
+            color: #94a3b8;
+            font-family: monospace; 
+            opacity: 0.9; 
+            margin-top: 6px;
+            font-weight: bold;
+            letter-spacing: 1px;
         }
 
         /* --- MODALS --- */
@@ -95,7 +106,7 @@
         
         .big-time { 
             font-family: 'Digital-7 Mono', monospace;
-            font-size: clamp(6rem, 25vw, 12rem); 
+            font-size: clamp(6rem, 25vw, 15rem); 
             color: white;
             text-shadow: 0 0 20px white;
             line-height: 1; margin: 0; 
@@ -190,10 +201,14 @@
 
         .card-time { font-size: var(--font-size, 2.2rem); font-weight: 900; margin-bottom: 5px; display: block;}
         .card-toggle { position: absolute; top: 15px; right: 15px; transform: scale(1.5); cursor: pointer; }
-        .card-info .sound-tag { font-size: 0.7rem; color: var(--accent); background: rgba(56, 189, 248, 0.1); padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 4px; }
-        .card-actions { display: flex; gap: 10px; margin-top: 15px; border-top: 1px solid #334155; padding-top: 10px; }
         
-        .edit-btn, .delete-btn, .copy-btn { background: none; border: none; cursor: pointer; font-weight: bold; font-size: 0.8rem; padding: 5px 8px; flex: 1; border-radius: 4px;}
+        /* NEW: Sub-elements scale natively with CSS variables */
+        .card-label { font-size: var(--label-size, 1rem); font-weight: bold; margin-bottom: 4px; line-height: 1.2; }
+        .card-days { font-size: var(--meta-size, 0.8rem); opacity: 0.8; margin-bottom: 6px; }
+        .card-info .sound-tag { font-size: var(--meta-size, 0.7rem); color: var(--accent); background: rgba(56, 189, 248, 0.1); padding: 4px 8px; border-radius: 4px; display: inline-block; }
+        
+        .card-actions { display: flex; gap: 10px; margin-top: 15px; border-top: 1px solid #334155; padding-top: 10px; }
+        .edit-btn, .delete-btn, .copy-btn { font-size: var(--btn-size, 0.8rem); background: none; border: none; cursor: pointer; font-weight: bold; padding: 0.6em 0.8em; flex: 1; border-radius: 4px;}
         .edit-btn { background: rgba(168, 85, 247, 0.1); color: var(--edit); }
         .delete-btn { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
         .copy-btn { background: rgba(34, 197, 94, 0.1); color: var(--success); }
@@ -263,6 +278,8 @@
             <div class="header-center">
                 <div id="liveClock" class="live-clock">00:00:00</div>
                 <div id="nextAlarmDisplay" class="next-alarm-banner">--:--:--</div>
+                
+                <div id="followingAlarmDisplay" class="following-alarm"></div>
                 
                 <div style="margin-top: 10px; display: flex; justify-content: center; gap: 10px;">
                     <button id="followBtn" class="follow-btn" onclick="toggleFollow()">Follow</button>
@@ -340,7 +357,7 @@
                 <div class="view-controls">
                     <label style="font-size:0.7rem; color:var(--accent)">SIZE</label>
                     <span style="font-size:0.8rem">🔍</span>
-                    <input type="range" min="1" max="2" value="1" step="1" id="sizeSlider" oninput="updateGridSize(this.value)">
+                    <input type="range" min="1" max="3" value="1" step="1" id="sizeSlider" oninput="updateGridSize(this.value)">
                 </div>
                 <div class="view-controls">
                     <label style="font-size:0.7rem; color:var(--accent)">SORT</label>
@@ -377,7 +394,7 @@
             lastModified: "Never"
         };
 
-        let currentServerVersion = null; // NEW: Tracks the current backend version
+        let currentServerVersion = null;
         let editingAlarmId = null;
         let ringTimeout = null;
         let currentNextAlarmId = null;
@@ -387,19 +404,13 @@
         // --- SOCKET EVENTS ---
         socket.on('connect', () => console.log("Connected to cloud!"));
 
-        // --- AUTO-REFRESH ON DEPLOY ---
         socket.on('server-version', (version) => {
             if (currentServerVersion === null) {
-                // First time connecting, remember this boot version
                 currentServerVersion = version;
             } else if (currentServerVersion !== version) {
-                // The server rebooted with new code! Force a hard refresh.
                 console.log("Server update detected! Refreshing page...");
                 document.getElementById('syncStatus').innerHTML = "Sync: <span style='color:var(--warning)'>UPDATING...</span>";
-                
-                setTimeout(() => {
-                    window.location.reload(true);
-                }, 1000); 
+                setTimeout(() => window.location.reload(true), 1000); 
             }
         });
 
@@ -424,9 +435,7 @@
             }
         });
 
-        // --- DYNAMIC SOUND LISTENER ---
         socket.on('available-sounds', (sounds) => {
-            console.log("Received dynamic sound list from server");
             const select = document.getElementById('alarmSound');
             const currentVal = select.value; 
             
@@ -455,7 +464,7 @@
             const savedPrefs = localStorage.getItem('alarm_local_prefs');
             if (savedPrefs) {
                 localPrefs = JSON.parse(savedPrefs);
-                if (localPrefs.cardSize > 2) localPrefs.cardSize = 2; 
+                if (localPrefs.cardSize > 3) localPrefs.cardSize = 3; 
             }
 
             document.getElementById('sortOrder').value = localPrefs.sortOrder;
@@ -464,11 +473,9 @@
             
             updateFollowUI();
 
-            // Mobile Audio Unlocker
             document.body.addEventListener('click', enableMobileAudio, { once: true });
             document.body.addEventListener('touchstart', enableMobileAudio, { once: true });
 
-            // Disable Follow on Interaction
             window.addEventListener('wheel', disableFollowOnInteraction);
             window.addEventListener('touchmove', disableFollowOnInteraction);
             window.addEventListener('keydown', (e) => {
@@ -491,7 +498,6 @@
                 audio.pause();
                 audio.currentTime = 0;
                 audio.volume = 1;
-                console.log("🔊 Mobile Audio System Unlocked");
             }).catch(e => console.log("Audio unlock failed (will try again next tap)", e));
         }
 
@@ -517,7 +523,6 @@
             localStorage.setItem('alarm_local_prefs', JSON.stringify(localPrefs));
         }
 
-        // --- FOLLOW MODE LOGIC ---
         function toggleFollow() {
             localPrefs.followMode = !localPrefs.followMode;
             saveLocalPrefs();
@@ -556,18 +561,14 @@
         }
 
         function scrollToCreator() {
-            // 1. Turn off Follow Mode if it is active
             if (localPrefs.followMode) {
                 localPrefs.followMode = false;
                 saveLocalPrefs();
                 updateFollowUI();
             }
-            
-            // 2. Scroll smoothly to the creation form
             const creator = document.getElementById('creatorSection');
             creator.scrollIntoView({ behavior: 'smooth', block: 'center' });
             
-            // 3. Flash the form's border blue so they know exactly where to look
             creator.style.transition = 'border-color 0.3s ease, box-shadow 0.3s ease';
             creator.style.borderColor = 'var(--accent)';
             creator.style.boxShadow = '0 0 15px rgba(56, 189, 248, 0.4)';
@@ -596,7 +597,6 @@
             });
         }
 
-        // --- PROFILE MANAGER ---
         function openManager() {
             renderManagerList();
             document.getElementById('managerOverlay').classList.remove('hidden');
@@ -680,7 +680,6 @@
             }
         }
 
-        // --- ALARM LOGIC ---
         function handleSubmit() {
             if (window.isSecureContext && Notification.permission === 'default') Notification.requestPermission();
             let time = document.getElementById('alarmTime').value;
@@ -746,8 +745,8 @@
                     <input type="checkbox" class="card-toggle" ${alarm.enabled ? 'checked' : ''} onchange="toggleAlarm(${alarm.id})">
                     <span class="card-time">${displayTime}</span>
                     <div class="card-info">
-                        <div style="font-weight:bold">${alarm.label || 'Alarm'}</div>
-                        <div style="font-size:0.8rem; opacity: 0.8">${alarm.days.map(d => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d]).join(', ') || 'Once'}</div>
+                        <div class="card-label">${alarm.label || 'Alarm'}</div>
+                        <div class="card-days">${alarm.days.map(d => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d]).join(', ') || 'Once'}</div>
                         <div class="sound-tag">🔉 ${alarm.soundName}</div>
                     </div>
                     <div class="card-actions">
@@ -760,6 +759,7 @@
             });
         }
 
+        // NEW: Assigns variable scales to all sub-elements based on the slider value
         function updateGridSize(val) {
             localPrefs.cardSize = val;
             saveLocalPrefs();
@@ -767,9 +767,24 @@
             if (val == 1) { 
                 root.style.setProperty('--card-width', '240px');
                 root.style.setProperty('--font-size', '2.2rem');
-            } else { 
+                root.style.setProperty('--label-size', '1rem');
+                root.style.setProperty('--meta-size', '0.75rem');
+                root.style.setProperty('--btn-size', '0.8rem');
+                root.style.setProperty('--next-size', '1.2rem');
+            } else if (val == 2) { 
                 root.style.setProperty('--card-width', '320px');
                 root.style.setProperty('--font-size', '3.5rem');
+                root.style.setProperty('--label-size', '1.2rem');
+                root.style.setProperty('--meta-size', '0.9rem');
+                root.style.setProperty('--btn-size', '1rem');
+                root.style.setProperty('--next-size', '1.5rem');
+            } else { 
+                root.style.setProperty('--card-width', '450px');
+                root.style.setProperty('--font-size', '5.5rem');
+                root.style.setProperty('--label-size', '1.6rem'); 
+                root.style.setProperty('--meta-size', '1.1rem');  
+                root.style.setProperty('--btn-size', '1.3rem');   
+                root.style.setProperty('--next-size', '2rem');    
             }
         }
 
@@ -905,8 +920,11 @@
             if (!cloudData.profiles || !cloudData.profiles[localPrefs.currentProfile]) return;
             const alarms = cloudData.profiles[localPrefs.currentProfile].filter(a => a.enabled);
             const display = document.getElementById('nextAlarmDisplay');
+            const followingDisplay = document.getElementById('followingAlarmDisplay');
+            
             if (alarms.length === 0) { 
                 display.textContent = "NO ALARMS ACTIVE"; 
+                followingDisplay.textContent = "";
                 document.querySelectorAll('.alarm-card').forEach(el => el.classList.remove('next-alarm-highlight'));
                 return; 
             }
@@ -934,6 +952,8 @@
             });
 
             nextOccurrences.sort((a, b) => a.date - b.date);
+            
+            // --- Next Alarm Countdown ---
             const next = nextOccurrences[0];
             const diff = next.date - now;
             const h = Math.floor(diff / 3600000).toString().padStart(2, '0');
@@ -941,6 +961,22 @@
             const s = Math.floor((diff % 60000) / 1000).toString().padStart(2, '0');
             const labelText = next.alarm.label.trim() || "ALARM";
             display.textContent = `NEXT [${labelText}] ${h}:${m}:${s}`;
+
+            // --- NEW: Following Alarm Dual Countdown ---
+            if (nextOccurrences.length > 1) {
+                const nextNext = nextOccurrences[1];
+                const diff2 = nextNext.date - now;
+                
+                // Calculates the live countdown for the second alarm in line
+                const h2 = Math.floor(diff2 / 3600000).toString().padStart(2, '0');
+                const m2 = Math.floor((diff2 % 3600000) / 60000).toString().padStart(2, '0');
+                const s2 = Math.floor((diff2 % 60000) / 1000).toString().padStart(2, '0');
+                
+                const nnLabel = nextNext.alarm.label.trim() || "ALARM";
+                followingDisplay.textContent = `THEN: [${nnLabel}] ${h2}:${m2}:${s2}`;
+            } else {
+                followingDisplay.textContent = "";
+            }
 
             document.querySelectorAll('.alarm-card').forEach(el => el.classList.remove('next-alarm-highlight'));
             const nextCard = document.getElementById(`alarm-card-${next.alarm.id}`);
@@ -976,23 +1012,19 @@
             }, 500); 
         }
 
-        // --- UPDATED AUDIO TRIGGER ---
         function triggerAlarm(alarm) {
             stopAlarm(); 
             
-            // Visuals
             document.getElementById('ringingTime').textContent = alarm.time;
             document.getElementById('ringingLabel').textContent = alarm.label || "ALARM";
             document.getElementById('alarmOverlay').classList.remove('hidden');
             
             const player = document.getElementById('mainAlarmAudio');
             
-            // 1. ATTACH THE FAILSAFE
             player.onerror = () => {
                 playEmergencyBeep();
             };
 
-            // 2. Try the primary sound
             player.src = alarm.sound;
             player.volume = 0; 
             
@@ -1003,7 +1035,6 @@
                 });
             }
 
-            // Fade In Effect
             if (fadeInterval) clearInterval(fadeInterval);
             fadeInterval = setInterval(() => {
                 if (player.volume < 1) player.volume = Math.min(1, player.volume + 0.05);
@@ -1022,7 +1053,6 @@
             player.pause();
             player.currentTime = 0;
             
-            // Clear the Failsafe
             player.onerror = null; 
             if (emergencyBeepInterval) clearInterval(emergencyBeepInterval);
             
