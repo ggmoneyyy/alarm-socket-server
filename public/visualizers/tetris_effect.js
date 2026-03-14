@@ -10,7 +10,7 @@ export default class TetrisVisualizer {
         this.activeRings = []; 
         this.ringEchoes = []; 
         this.lastEchoTime = 0; 
-        this.echoBurstCount = 0; // NEW: Tracks the 3-shot burst
+        this.echoBurstCount = 0; 
         this.screenFlash = 0; 
         this.laneMap = {};
         this.nextLaneIndex = 0;
@@ -60,7 +60,7 @@ export default class TetrisVisualizer {
         this.screenFlash = 1.0; 
         this.ringEchoes = [];
         this.lastEchoTime = 0; 
-        this.echoBurstCount = 0; // Reset burst counter
+        this.echoBurstCount = 0; 
         
         if (!this.ringClickListener) {
             this.ringClickListener = () => {
@@ -137,7 +137,6 @@ export default class TetrisVisualizer {
 
         const isRinging = this.activeRings.length > 0;
 
-        // --- DYNAMIC BACKGROUND INVERSION ---
         if (isRinging) {
             this.ctx.fillStyle = '#f8fafc'; 
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -399,7 +398,6 @@ export default class TetrisVisualizer {
             const boxX = cx - boxW / 2;
             const boxY = cy - boxH / 2;
 
-            // 1. BURST FIRE LOGIC: 3 shots at 300ms, then a 2000ms pause
             let echoInterval = this.echoBurstCount < 3 ? 300 : 2000;
             
             if (time - this.lastEchoTime > echoInterval) {
@@ -409,14 +407,14 @@ export default class TetrisVisualizer {
                     thickness: 25, 
                     color: '#334155', 
                     life: 1.0,
-                    decay: 0.008 // Fades slightly faster so it doesn't clutter the screen
+                    decay: 0.008 
                 });
                 
                 this.lastEchoTime = time;
                 this.echoBurstCount++;
                 
                 if (this.echoBurstCount >= 4) {
-                    this.echoBurstCount = 1; // Resets to 1 because this shot is the first of the new burst
+                    this.echoBurstCount = 1; 
                 }
             }
 
@@ -445,21 +443,76 @@ export default class TetrisVisualizer {
             this.ctx.fill();
             this.ctx.shadowBlur = 0;
 
+            // --- 4. DYNAMIC FONT SCALING ENGINE ---
             this.ctx.fillStyle = '#ffffff';
             this.ctx.textAlign = 'center';
-            this.ctx.font = 'bold 54px monospace'; 
             
-            let words = (alarm.label || 'ALARM').split(' '); let line = ''; let lines = [];
-            for(let n = 0; n < words.length; n++) {
-                let testLine = line + words[n] + ' ';
-                let metrics = this.ctx.measureText(testLine);
-                if (metrics.width > boxW - 60 && n > 0) { lines.push(line.trim()); line = words[n] + ' '; } 
-                else { line = testLine; }
-            }
-            lines.push(line.trim());
-            if (lines.length > 3) { lines.length = 3; lines[2] = lines[2].substring(0, lines[2].length - 3) + '...'; }
+            let label = alarm.label || 'ALARM';
+            let words = label.split(' ');
+            let lines = [];
+            let fontSize = 54;
+            let lineHeight = 65;
 
-            const lineHeight = 65; 
+            // Try different formats (Size, LineHeight, MaxLines Allowed)
+            const formats = [
+                { size: 90, lh: 100, maxLines: 1 },
+                { size: 70, lh: 85, maxLines: 2 },
+                { size: 54, lh: 65, maxLines: 3 }
+            ];
+
+            for (let format of formats) {
+                this.ctx.font = `bold ${format.size}px monospace`;
+                let currentLine = '';
+                let testLines = [];
+
+                for (let n = 0; n < words.length; n++) {
+                    let testLine = currentLine + words[n] + ' ';
+                    let metrics = this.ctx.measureText(testLine);
+                    // Leave 100px padding so it doesn't touch the edges
+                    if (metrics.width > boxW - 100 && n > 0) {
+                        testLines.push(currentLine.trim());
+                        currentLine = words[n] + ' ';
+                    } else {
+                        currentLine = testLine;
+                    }
+                }
+                testLines.push(currentLine.trim());
+
+                // If this format successfully fit the text within its max allowed lines, lock it in!
+                if (testLines.length <= format.maxLines) {
+                    fontSize = format.size;
+                    lineHeight = format.lh;
+                    lines = testLines;
+                    break; 
+                }
+            }
+
+            // Fallback: If it's incredibly long and exceeded 3 lines even at 54px, force it to 54px and truncate
+            if (lines.length === 0 || lines.length > 3) {
+                fontSize = 54;
+                lineHeight = 65;
+                this.ctx.font = `bold ${fontSize}px monospace`;
+                let currentLine = '';
+                lines = [];
+                for (let n = 0; n < words.length; n++) {
+                    let testLine = currentLine + words[n] + ' ';
+                    let metrics = this.ctx.measureText(testLine);
+                    if (metrics.width > boxW - 100 && n > 0) {
+                        lines.push(currentLine.trim());
+                        currentLine = words[n] + ' ';
+                    } else {
+                        currentLine = testLine;
+                    }
+                }
+                lines.push(currentLine.trim());
+                if (lines.length > 3) {
+                    lines.length = 3;
+                    lines[2] = lines[2].substring(0, lines[2].length - 3) + '...';
+                }
+            }
+
+            // Render the final lines with the dynamically chosen font size
+            this.ctx.font = `bold ${fontSize}px monospace`;
             const blockCenterY = boxY + 160; 
             let startY = blockCenterY - ((lines.length - 1) * (lineHeight / 2));
             
@@ -467,6 +520,7 @@ export default class TetrisVisualizer {
                 this.ctx.fillText(lines[k], cx, startY + (k * lineHeight));
             }
 
+            // 5. Render Outlined STOP ALARM Button
             const btnW = 280;
             const btnH = 60;
             const btnX = cx - btnW / 2;
