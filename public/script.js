@@ -337,6 +337,10 @@ window.toggleVisualizer = async function() {
     
     if (visualizerActive) {
         visLayer.classList.remove('hidden');
+        
+        // Hides the scrollbar to keep the immersion
+        document.body.style.overflow = 'hidden'; 
+        
         particleCanvas = document.getElementById('particleCanvas');
         ctx = particleCanvas.getContext('2d');
         resizeCanvas();
@@ -345,6 +349,10 @@ window.toggleVisualizer = async function() {
         vizLoop();
     } else {
         visLayer.classList.add('hidden');
+        
+        // Restores the scrollbar for the main grid
+        document.body.style.overflow = ''; 
+        
         cancelAnimationFrame(animationFrameId);
         
         if (currentVizInstance && typeof currentVizInstance.destroy === 'function') {
@@ -447,7 +455,6 @@ function playEmergencyBeep() {
 
 window.previewSound = function() { const p = document.getElementById('audioPreview'); p.src = document.getElementById('alarmSound').value; p.play(); setTimeout(() => p.pause(), 2500); }
 
-// --- UPDATED ALARM OVERRIDE LOGIC ---
 function triggerAlarm(alarm) {
     stopAlarm(); 
     
@@ -474,7 +481,6 @@ function triggerAlarm(alarm) {
     }
 }
 
-// --- UPDATED ALARM STOP LOGIC ---
 window.stopAlarm = function() {
     const p = document.getElementById('mainAlarmAudio'); p.pause(); p.currentTime = 0; p.onerror = null; 
     if (emergencyBeepInterval) clearInterval(emergencyBeepInterval); if (ringTimeout) clearTimeout(ringTimeout); if (fadeInterval) clearInterval(fadeInterval);
