@@ -12,7 +12,7 @@ export default class DeparturesVisualizer {
         
         // Board Configuration
         this.cols = 38; 
-        this.rows = 12;  // Expanded to 12 rows to fill large monitors!
+        this.rows = 8;  
         this.grid = [];
         
         this.charSet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 :+-()[]/".split('');
@@ -68,11 +68,15 @@ export default class DeparturesVisualizer {
         let strings = [];
         strings.push("TIME      EVENT                         ");
 
+        const elevenHoursMs = 11 * 60 * 60 * 1000;
+
+        // Filter out ringing alarms AND alarms more than 11 hours away
         const visibleAlarms = this.alarms.filter(occ => {
-            return !this.activeRings.some(ring => ring.id === occ.alarm.id);
+            const isNotRinging = !this.activeRings.some(ring => ring.id === occ.alarm.id);
+            const isWithinWindow = (occ.date - now) <= elevenHoursMs;
+            return isNotRinging && isWithinWindow;
         });
 
-        // Loop dynamically up to the maximum number of data rows
         for (let i = 0; i < this.rows - 1; i++) {
             if (i < visibleAlarms.length) {
                 const occ = visibleAlarms[i];
@@ -97,29 +101,28 @@ export default class DeparturesVisualizer {
     }
 
     render(now) {
-        const padding = 4; 
+        const charPadding = 4; 
         
-        // --- NEW OMNI-DIRECTIONAL SCALING MATH ---
         const maxAllowedWidth = Math.min(this.canvas.width * 0.95, 1600);
-        // Leave ~22% of screen height for margins, headers, and the massive clock
         const maxAllowedHeight = this.canvas.height * 0.78; 
         
-        // First try scaling by width
-        let cellW = (maxAllowedWidth - (this.cols * padding)) / this.cols;
+        let cellW = (maxAllowedWidth - (this.cols * charPadding)) / this.cols;
         let cellH = cellW * 1.6; 
+        let rowPadding = cellH * 0.40; 
         
-        // If the resulting board is too tall for the screen, shrink it based on height instead
-        const expectedBoardH = (cellH * this.rows) + (padding * this.rows);
+        let expectedBoardH = (cellH * this.rows) + (rowPadding * (this.rows - 1));
+        
         if (expectedBoardH > maxAllowedHeight) {
-            cellH = (maxAllowedHeight - (padding * this.rows)) / this.rows;
+            let heightFactor = this.rows + 0.40 * (this.rows - 1);
+            cellH = maxAllowedHeight / heightFactor;
             cellW = cellH / 1.6;
+            rowPadding = cellH * 0.40;
         }
 
-        const boardW = (cellW * this.cols) + (padding * this.cols);
-        const boardH = (cellH * this.rows) + (padding * this.rows);
+        const boardW = (cellW * this.cols) + (charPadding * this.cols);
+        const boardH = (cellH * this.rows) + (rowPadding * (this.rows - 1));
         
         const startX = (this.canvas.width - boardW) / 2;
-        // Shift startY down slightly to give the giant clock breathing room
         const startY = (this.canvas.height - boardH) / 2 + 60; 
 
         const isRinging = this.activeRings.length > 0;
@@ -189,15 +192,15 @@ export default class DeparturesVisualizer {
         
         const cFlapW = cellW * 2.0;
         const cFlapH = cellH * 2.2;
-        const cTotalW = (clockStr.length * cFlapW) + (clockStr.length * padding);
-        const cStartX = startX + boardW - cTotalW + padding;
+        const cTotalW = (clockStr.length * cFlapW) + (clockStr.length * charPadding);
+        const cStartX = startX + boardW - cTotalW + charPadding;
         
         this.ctx.textAlign = 'center';
         this.ctx.font = `bold ${cFlapH * 0.8}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
 
         for(let i = 0; i < clockStr.length; i++) {
             const char = clockStr[i];
-            const fx = cStartX + (i * (cFlapW + padding));
+            const fx = cStartX + (i * (cFlapW + charPadding));
             const fy = headerY + (iconSize/2) - (cFlapH/2);
             
             this.ctx.fillStyle = '#050505';
@@ -247,8 +250,8 @@ export default class DeparturesVisualizer {
                     cell.display = cell.target;
                 }
 
-                const cx = startX + (c * (cellW + padding));
-                const cy = startY + (r * (cellH + padding));
+                const cx = startX + (c * (cellW + charPadding));
+                const cy = startY + (r * (cellH + rowPadding));
 
                 this.ctx.fillStyle = '#050505'; 
                 this.ctx.beginPath();
