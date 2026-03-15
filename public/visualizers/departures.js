@@ -12,7 +12,7 @@ export default class DeparturesVisualizer {
         
         // Board Configuration
         this.cols = 38; 
-        this.rows = 6;  
+        this.rows = 12;  // Expanded to 12 rows to fill large monitors!
         this.grid = [];
         
         this.charSet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 :+-()[]/".split('');
@@ -46,7 +46,6 @@ export default class DeparturesVisualizer {
     handleRing(alarm) {
         this.activeRings.push(alarm);
         
-        // Start the 3-second countdown when the first alarm rings
         if (this.activeRings.length === 1) {
             this.ringStartTime = Date.now();
             this.hasModalOpened = false;
@@ -69,12 +68,12 @@ export default class DeparturesVisualizer {
         let strings = [];
         strings.push("TIME      EVENT                         ");
 
-        // Filter out ringing alarms so they vanish and the list shifts UP
         const visibleAlarms = this.alarms.filter(occ => {
             return !this.activeRings.some(ring => ring.id === occ.alarm.id);
         });
 
-        for (let i = 0; i < 5; i++) {
+        // Loop dynamically up to the maximum number of data rows
+        for (let i = 0; i < this.rows - 1; i++) {
             if (i < visibleAlarms.length) {
                 const occ = visibleAlarms[i];
                 let diffMs = Math.max(0, occ.date - now);
@@ -99,22 +98,33 @@ export default class DeparturesVisualizer {
 
     render(now) {
         const padding = 4; 
-        const maxBoardWidth = Math.min(this.canvas.width * 0.95, 1600);
-        const cellW = (maxBoardWidth - (this.cols * padding)) / this.cols;
-        const cellH = cellW * 1.6; 
         
+        // --- NEW OMNI-DIRECTIONAL SCALING MATH ---
+        const maxAllowedWidth = Math.min(this.canvas.width * 0.95, 1600);
+        // Leave ~22% of screen height for margins, headers, and the massive clock
+        const maxAllowedHeight = this.canvas.height * 0.78; 
+        
+        // First try scaling by width
+        let cellW = (maxAllowedWidth - (this.cols * padding)) / this.cols;
+        let cellH = cellW * 1.6; 
+        
+        // If the resulting board is too tall for the screen, shrink it based on height instead
+        const expectedBoardH = (cellH * this.rows) + (padding * this.rows);
+        if (expectedBoardH > maxAllowedHeight) {
+            cellH = (maxAllowedHeight - (padding * this.rows)) / this.rows;
+            cellW = cellH / 1.6;
+        }
+
         const boardW = (cellW * this.cols) + (padding * this.cols);
         const boardH = (cellH * this.rows) + (padding * this.rows);
         
         const startX = (this.canvas.width - boardW) / 2;
+        // Shift startY down slightly to give the giant clock breathing room
         const startY = (this.canvas.height - boardH) / 2 + 60; 
 
-        // --- NEW TIMING & SHUFFLE LOGIC ---
         const isRinging = this.activeRings.length > 0;
         const timeSinceRing = isRinging ? Date.now() - this.ringStartTime : 0;
-        const showModal = isRinging && timeSinceRing > 3000; // Modal waits exactly 3 seconds
-        
-        // If we are in the 3-second delay period, trigger the extended 2-second animation
+        const showModal = isRinging && timeSinceRing > 3000; 
         const isMajorShuffle = isRinging && !showModal;
 
         // Background
@@ -131,7 +141,6 @@ export default class DeparturesVisualizer {
         else this.ctx.strokeRect(startX, headerY, iconSize * 1.4, iconSize);
         this.ctx.stroke();
 
-        // Custom drawn airplane pictogram
         this.ctx.save();
         this.ctx.translate(startX + (iconSize * 1.4)/2, headerY + iconSize/2);
         this.ctx.fillStyle = '#ffcc00';
@@ -167,13 +176,12 @@ export default class DeparturesVisualizer {
         
         this.ctx.restore();
 
-        // Departures Title
         this.ctx.textAlign = 'left';
         this.ctx.font = 'bold 50px "Helvetica Neue", Helvetica, Arial, sans-serif';
         this.ctx.fillStyle = '#ffcc00';
         this.ctx.fillText('Departures', startX + (iconSize * 1.4) + 20, headerY + iconSize/2 + 4);
 
-        // Massive Clock (Top Right)
+        // Massive Clock
         const ch = now.getHours().toString().padStart(2, '0');
         const cm = now.getMinutes().toString().padStart(2, '0');
         const cs = now.getSeconds().toString().padStart(2, '0');
@@ -205,7 +213,6 @@ export default class DeparturesVisualizer {
             this.ctx.fillRect(fx, fy + cFlapH/2 - 1, cFlapW, 3);
         }
 
-        // --- UPDATE TARGET STRINGS WITH DYNAMIC SHUFFLE SPEED ---
         const targetStrings = this.generateRowStrings(now);
         
         for (let r = 0; r < this.rows; r++) {
@@ -216,19 +223,15 @@ export default class DeparturesVisualizer {
                 
                 if (cell.target !== char) {
                     cell.target = char;
-                    
                     if (isMajorShuffle) {
-                        // Massive ~2-second cascade delay for when alarms hit zero
                         cell.flipTicks = Math.floor(Math.random() * 20) + 90 + (r * 8); 
                     } else {
-                        // Snappy, fast flips for normal second-by-second ticking
                         cell.flipTicks = Math.floor(Math.random() * 8) + 4; 
                     }
                 }
             }
         }
 
-        // Render Flap Grid
         this.ctx.textAlign = 'center';
         this.ctx.textBaseline = 'middle';
         this.ctx.font = `bold ${cellH * 0.8}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
@@ -259,7 +262,6 @@ export default class DeparturesVisualizer {
                     } else {
                         this.ctx.fillStyle = '#ffffff'; 
                         
-                        // Flash red ONLY if strictly under 5 minutes (00:00 to 00:04) AND the modal isn't showing yet
                         if (targetStrings[r] && targetStrings[r].match(/^00:0[0-4]/) && !showModal) {
                             const pulse = Math.floor(now.getTime() / 500) % 2 === 0;
                             this.ctx.fillStyle = pulse ? '#ef4444' : '#ffffff'; 
@@ -274,7 +276,6 @@ export default class DeparturesVisualizer {
             }
         }
 
-        // --- THE SPLIT-FLAP MODAL ---
         if (showModal) {
             
             if (!this.hasModalOpened) {
@@ -307,7 +308,6 @@ export default class DeparturesVisualizer {
             this.ctx.fill();
             this.ctx.stroke();
 
-            // 1. "DEPARTING" Header
             const depText = "DEPARTING";
             const depFlapW = 42; const depFlapH = 68; const depPad = 4;
             const depTotalW = (depText.length * depFlapW) + ((depText.length - 1) * depPad);
@@ -335,7 +335,6 @@ export default class DeparturesVisualizer {
                 this.ctx.fillRect(fx, depY + depFlapH/2 - 1, depFlapW, 2);
             }
 
-            // 2. DYNAMIC SCALING FOR ALARM TITLE
             let label = (alarm.label || 'ALARM').toUpperCase();
             let words = label.split(' ');
             let lines = [];
@@ -425,7 +424,6 @@ export default class DeparturesVisualizer {
                 }
             }
 
-            // 4. STOP ALARM Button
             const btnW = 280; const btnH = 60;
             const btnX = cx - btnW / 2;
             const btnY = boxY + boxH - 90;
