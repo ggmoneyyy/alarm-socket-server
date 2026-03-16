@@ -281,9 +281,31 @@ export default class TetrisVisualizer {
         this.ctx.globalAlpha = 1.0;
         this.ctx.globalCompositeOperation = 'source-over';
 
-        const clockEl = document.getElementById('visClock');
-        let matrixFloor = this.canvas.height * 0.8; 
-        if (clockEl) { const rect = clockEl.getBoundingClientRect(); matrixFloor = rect.top - 5; }
+        // --- DRAW THE GLOWING CANVAS CLOCK (Replacing HTML visClock) ---
+        const ch = now.getHours().toString().padStart(2, '0');
+        const cm = now.getMinutes().toString().padStart(2, '0');
+        const cs = now.getSeconds().toString().padStart(2, '0');
+        const clockStr = `${ch}:${cm}:${cs}`;
+
+        let clockY = this.canvas.height - 40;
+        
+        if (!isRinging) {
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'alphabetic';
+            // Scale font size based on screen width for responsiveness
+            const fontSize = Math.min(140, this.canvas.width * 0.1); 
+            this.ctx.font = `bold ${fontSize}px monospace`;
+            
+            this.ctx.fillStyle = '#00f0ff';
+            this.ctx.shadowColor = '#00f0ff';
+            this.ctx.shadowBlur = 30; // Neon glow effect
+            this.ctx.fillText(clockStr, this.canvas.width / 2, clockY);
+            this.ctx.shadowBlur = 0; // Reset
+        }
+
+        // --- MATRIX CALCULATIONS ---
+        // We set the matrix floor right above where the new canvas clock sits
+        let matrixFloor = this.canvas.height - 180; 
 
         const MAX_LOOKAHEAD_MS = 2 * 60 * 60 * 1000; 
         const blockWidth = Math.min(420, (this.canvas.width * 0.94) / 3); 
@@ -378,6 +400,7 @@ export default class TetrisVisualizer {
             const s = Math.floor((Math.max(0, diffMs) % 60000) / 1000).toString().padStart(2, '0');
 
             this.ctx.textAlign = 'center'; this.ctx.fillStyle = textColor;
+            this.ctx.textBaseline = 'alphabetic'; // Fix baseline for the block text
             if (!isRinging && (!isCritical || !isPeak)) { this.ctx.shadowColor = mainColor; this.ctx.shadowBlur = 10; }
             
             this.ctx.font = 'bold 22px monospace'; let startY = y + 35; 
@@ -443,9 +466,9 @@ export default class TetrisVisualizer {
             this.ctx.fill();
             this.ctx.shadowBlur = 0;
 
-            // --- 4. DYNAMIC FONT SCALING ENGINE ---
             this.ctx.fillStyle = '#ffffff';
             this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'alphabetic'; // Reset text baseline for the overlay
             
             let label = alarm.label || 'ALARM';
             let words = label.split(' ');
@@ -453,7 +476,6 @@ export default class TetrisVisualizer {
             let fontSize = 54;
             let lineHeight = 65;
 
-            // Try different formats (Size, LineHeight, MaxLines Allowed)
             const formats = [
                 { size: 90, lh: 100, maxLines: 1 },
                 { size: 70, lh: 85, maxLines: 2 },
@@ -468,7 +490,6 @@ export default class TetrisVisualizer {
                 for (let n = 0; n < words.length; n++) {
                     let testLine = currentLine + words[n] + ' ';
                     let metrics = this.ctx.measureText(testLine);
-                    // Leave 100px padding so it doesn't touch the edges
                     if (metrics.width > boxW - 100 && n > 0) {
                         testLines.push(currentLine.trim());
                         currentLine = words[n] + ' ';
@@ -478,7 +499,6 @@ export default class TetrisVisualizer {
                 }
                 testLines.push(currentLine.trim());
 
-                // If this format successfully fit the text within its max allowed lines, lock it in!
                 if (testLines.length <= format.maxLines) {
                     fontSize = format.size;
                     lineHeight = format.lh;
@@ -487,7 +507,6 @@ export default class TetrisVisualizer {
                 }
             }
 
-            // Fallback: If it's incredibly long and exceeded 3 lines even at 54px, force it to 54px and truncate
             if (lines.length === 0 || lines.length > 3) {
                 fontSize = 54;
                 lineHeight = 65;
@@ -511,7 +530,6 @@ export default class TetrisVisualizer {
                 }
             }
 
-            // Render the final lines with the dynamically chosen font size
             this.ctx.font = `bold ${fontSize}px monospace`;
             const blockCenterY = boxY + 160; 
             let startY = blockCenterY - ((lines.length - 1) * (lineHeight / 2));
@@ -520,7 +538,6 @@ export default class TetrisVisualizer {
                 this.ctx.fillText(lines[k], cx, startY + (k * lineHeight));
             }
 
-            // 5. Render Outlined STOP ALARM Button
             const btnW = 280;
             const btnH = 60;
             const btnX = cx - btnW / 2;
