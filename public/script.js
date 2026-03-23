@@ -94,13 +94,26 @@ function enableMobileAudio() {
 }
 
 function refreshUI() {
-    if (!cloudData.profiles[localPrefs.currentProfile]) {
-        localPrefs.currentProfile = "Default";
-        if (!cloudData.profiles["Default"]) cloudData.profiles["Default"] = [];
+    if (!cloudData.profiles) cloudData.profiles = { "Default": [] };
+
+    let keys = Object.keys(cloudData.profiles).sort((a, b) => a.localeCompare(b));
+    if (keys.length > 1 && keys.includes("Default")) {
+        keys = keys.filter(k => k !== "Default");
+    }
+
+    if (!keys.includes(localPrefs.currentProfile)) {
+        localPrefs.currentProfile = keys[0] || "Default";
         saveLocalPrefs();
     }
+
+    if (!cloudData.profiles[localPrefs.currentProfile]) {
+        cloudData.profiles[localPrefs.currentProfile] = [];
+        saveLocalPrefs();
+    }
+
     renderAlarms();
     updateProfileDropdown();
+    
     if(!document.getElementById('managerOverlay').classList.contains('hidden')) {
         renderManagerList();
     }
