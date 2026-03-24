@@ -7,9 +7,6 @@ const path = require('path');
 // --- CONFIGURATION ---
 const BACKUP_URL = "https://script.google.com/macros/s/AKfycbwRNZez29szHhKaM7sHd11bIJCsl4VE58ijsvfznv2GrZxxTscA2EozBjOBFyy5EMJ9/exec"; 
 
-// NEW: Generates a unique timestamp every time Render starts the server
-const SERVER_VERSION = Date.now();
-
 const app = express();
 const server = http.createServer(app);
 
@@ -45,7 +42,7 @@ function getAvailableSounds() {
     sounds.push({ name: "Crazy bell", url: "https://actions.google.com/sounds/v1/cartoon/crazy_dinner_bell.ogg" });
     sounds.push({ name: "Jingle Bells", url: "https://actions.google.com/sounds/v1/cartoon/jingle_bells.ogg" });
 
-    // 2. Scan for custom MP3s/OGGs
+    // 2. Scan for custom MP3s
     const soundsDir = path.join(__dirname, 'public', 'sounds');
     try {
         if (fs.existsSync(soundsDir)) {
@@ -67,12 +64,48 @@ function getAvailableSounds() {
     return sounds;
 }
 
+// --- DYNAMIC VISUALIZER FINDER ---
+function getAvailableVisualizers() {
+    let visualizers = [];
+    
+    const vizDir = path.join(__dirname, 'public', 'visualizers');
+    try {
+        if (fs.existsSync(vizDir)) {
+            const files = fs.readdirSync(vizDir);
+            files.forEach(file => {
+                if (file.endsWith('.js')) {
+                    const val = file.replace('.js', ''); 
+                    
+                    // Capitalize first letters and replace underscores with spaces for the menu label
+                    const cleanName = val
+                        .split('_')
+                        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                        .join(' ');
+                        
+                    visualizers.push({
+                        name: cleanName,
+                        value: val
+                    });
+                }
+            });
+        }
+    } catch (err) {
+        console.error("Error reading visualizers directory:", err.message);
+    }
+    
+    // Add a fallback just in case the folder is empty so the frontend doesn't break
+    if (visualizers.length === 0) {
+        visualizers.push({ name: "Default (None Found)", value: "default" });
+    }
+
+    return visualizers;
+}
+
 // 1. LOAD BACKUP ON STARTUP
 async function loadFromBackup() {
     console.log("📥 Fetching backup from Google Sheets...");
     try {
         const controller = new AbortController();
-        // 15-second timeout to handle slow Google cold starts
         const timeoutId = setTimeout(() => controller.abort(), 15000);
 
         const response = await fetch(BACKUP_URL, { signal: controller.signal });
@@ -107,7 +140,6 @@ app.get('/', (req, res) => {
         <div style="font-family: monospace; padding: 20px;">
             <h1>⏰ Server is Running</h1>
             <p><strong>Status:</strong> Live</p>
-            <p><strong>Version ID:</strong> ${SERVER_VERSION}</p>
             <p><strong>Profiles Loaded:</strong> ${profileCount}</p>
         </div>
     `);
@@ -120,12 +152,10 @@ loadFromBackup();
 io.on('connection', (socket) => {
     console.log('⚡ User connected:', socket.id);
 
-    // NEW: Tell the client what version the server is running
-    socket.emit('server-version', SERVER_VERSION);
-
-    // Send current data and sound list immediately to new user
+    // Send current data, sound list, AND visualizer list immediately to new user
     socket.emit('init-data', appData);
     socket.emit('available-sounds', getAvailableSounds());
+    socket.emit('available-visualizers', getAvailableVisualizers()); // <-- NEW LINE
 
     socket.on('update-data', (newData) => {
         if(newData && newData.profiles) {
