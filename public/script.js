@@ -53,6 +53,29 @@ socket.on('available-sounds', (sounds) => {
     if (currentVal && sounds.find(s => s.url === currentVal)) select.value = currentVal;
 });
 
+// --- NEW VISUALIZER LISTENER ---
+socket.on('available-visualizers', (visualizers) => {
+    const select = document.getElementById('themeSelector'); 
+    if (!select) return; // Failsafe in case the ID doesn't match
+
+    const currentVal = select.value; 
+    select.innerHTML = ''; 
+
+    visualizers.forEach(viz => {
+        const opt = document.createElement('option');
+        opt.value = viz.value; 
+        opt.textContent = viz.name;
+        select.appendChild(opt);
+    });
+
+    if (currentVal && visualizers.find(v => v.value === currentVal)) {
+        select.value = currentVal;
+    } else if (visualizers.length > 0) {
+        select.value = visualizers[0].value;
+        currentVizName = visualizers[0].value;
+    }
+});
+
 socket.on('disconnect', () => {
     document.getElementById('syncStatus').innerHTML = "Sync: <span style='color:var(--danger)'>OFFLINE</span>";
 });
