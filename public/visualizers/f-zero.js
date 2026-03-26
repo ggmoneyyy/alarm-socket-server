@@ -91,34 +91,47 @@ export default class FZeroVisualizer {
     drawMode7Track(horizonY, w, h, cx, offset, cycle, isFast) {
         this.bCtx.fillStyle = '#000000'; this.bCtx.fillRect(0, horizonY, w, h - horizonY);
         const trackTopW = w * 0.05; const trackBotW = w * 1.8; const drawH = h - horizonY;
-        const numStripes = 40;
-        for (let i = numStripes; i >= 0; i--) {
+        const numStripes = 40; 
+        
+        for (let i = 0; i <= numStripes; i++) {
             let val1 = i + offset; let val2 = (i + 1) + offset;
             const exponent = isFast ? 3.5 : 3.0; 
             let pct1 = Math.pow(val1 / numStripes, exponent);
             let pct2 = Math.pow(val2 / numStripes, exponent);
-            let y1 = horizonY + pct1 * drawH; let y2 = horizonY + pct2 * drawH;
+            
+            let y1 = Math.floor(horizonY + pct1 * drawH); 
+            let y2 = Math.ceil(horizonY + pct2 * drawH) + 1; 
+            
             let w1 = trackTopW + pct1 * (trackBotW - trackTopW);
             let w2 = trackTopW + pct2 * (trackBotW - trackTopW);
-            let isDark = (Math.abs(i - cycle) % 2) === 0; 
-            if (isDark) { this.bCtx.fillStyle = '#091326'; this.bCtx.fillRect(0, y1, w, y2 - y1); }
-            this.bCtx.fillStyle = isDark ? '#8a939e' : '#b2b8c2'; 
+            
+            let isDarkRoad = (Math.abs(Math.floor((i - cycle) / 2)) % 2) === 0; 
+            let isAltSlice = (Math.abs(i - cycle) % 2) === 0; 
+            
+            if (isDarkRoad) { this.bCtx.fillStyle = '#091326'; this.bCtx.fillRect(0, y1, w, y2 - y1); }
+            
+            this.bCtx.fillStyle = isDarkRoad ? '#90a09d' : '#98a8a7'; 
+            
             this.bCtx.beginPath(); this.bCtx.moveTo(cx - w1/2, y1); this.bCtx.lineTo(cx + w1/2, y1);
             this.bCtx.lineTo(cx + w2/2, y2); this.bCtx.lineTo(cx - w2/2, y2); this.bCtx.fill();
+            
             const railW1 = Math.max(1, 20 * pct1); const railW2 = Math.max(1, 20 * pct2);
-            this.bCtx.fillStyle = isDark ? '#111111' : '#222222'; 
+            this.bCtx.fillStyle = isAltSlice ? '#111111' : '#222222'; 
             this.bCtx.beginPath(); this.bCtx.moveTo(cx - w1/2, y1); this.bCtx.lineTo(cx - w1/2 - railW1, y1);
             this.bCtx.lineTo(cx - w2/2 - railW2, y2); this.bCtx.lineTo(cx - w2/2, y2); this.bCtx.fill();
             this.bCtx.beginPath(); this.bCtx.moveTo(cx + w1/2, y1); this.bCtx.lineTo(cx + w1/2 + railW1, y1);
             this.bCtx.lineTo(cx + w2/2 + railW2, y2); this.bCtx.lineTo(cx + w2/2, y2); this.bCtx.fill();
+            
             let midY = (y1 + y2) / 2; let rX = Math.max(2, railW2 * 0.9); let rY = Math.max(1, (y2 - y1) * 0.55); 
-            this.bCtx.fillStyle = isDark ? '#49e875' : '#7aff96'; 
+            this.bCtx.fillStyle = isAltSlice ? '#49e875' : '#7aff96'; 
             this.bCtx.beginPath(); this.bCtx.ellipse(cx - w1/2 - railW2/2, midY, rX, rY, 0, 0, Math.PI*2); this.bCtx.fill();
             this.bCtx.beginPath(); this.bCtx.ellipse(cx + w1/2 + railW2/2, midY, rX, rY, 0, 0, Math.PI*2); this.bCtx.fill();
+            
             const terrWBot = w * 2.0; 
             let traffic1 = (Math.abs(i - cycle * 2.0) % 12) < 4.0; 
             let traffic2 = (Math.abs(i + cycle * 3.0) % 10) < 3.0; 
             let traffic3 = (Math.abs(i - cycle * 1.0) % 16) < 6.0; 
+            
             if (traffic1 || traffic2 || traffic3) {
                 this.bCtx.fillStyle = traffic1 ? '#00e5ff' : (traffic2 ? '#ff00aa' : '#ffd700'); 
                 let laneOffset = traffic1 ? 0.2 : (traffic2 ? 0.5 : 0.8); 
@@ -194,7 +207,6 @@ export default class FZeroVisualizer {
         this.position += this.isPassing ? 4.5 : 1.2;
         let offset = this.position % 1; let cycle = Math.floor(this.position);
 
-        // --- RETRO BANDED SKY ---
         const skyBands = 8;
         const bandH = vHorizon / skyBands;
         const skyColors = ['#2b84ff', '#3b8fff', '#4b9aff', '#5ba5ff', '#6bb0ff', '#7bbbff', '#8bc6ff', '#dff2ff'];
@@ -203,25 +215,32 @@ export default class FZeroVisualizer {
             this.bCtx.fillRect(0, i * bandH, vw, bandH + 1);
         });
 
-        // --- TEXTURED CITY SKYLINE WITH DITHERING ---
+        // --- REFINED: SUBTLE PARALLAX ---
+        // Multiplier reduced from 0.15 to 0.05 for a much heavier, distant feel
+        const citySway = Math.floor(Math.sin(this.position * 0.05) * (vw * 0.05));
+
         this.bCtx.fillStyle = '#1a234f'; 
-        for (let b = 0; b < 60; b++) {
-            let bx = b * (vw / 60);
-            let bh = 15 + Math.abs(Math.sin(b * 12.3) * 35) + Math.abs(Math.cos(b * 7.1) * 20);
+        for (let b = -30; b < 90; b++) {
+            let bHash = Math.abs(b); 
+            let bx = Math.floor(b * (vw / 60)) + citySway;
+            let bh = 15 + Math.abs(Math.sin(bHash * 12.3) * 35) + Math.abs(Math.cos(bHash * 7.1) * 20);
+            
+            if (bx + (vw / 60) + 1 < 0 || bx > vw) continue;
+
             this.bCtx.fillRect(bx, vHorizon - bh, (vw / 60) + 1, bh);
             
             this.bCtx.fillStyle = '#141b3d'; 
             for (let dy = 0; dy < bh; dy += 4) {
-                if ((b + dy) % 8 === 0) this.bCtx.fillRect(bx, vHorizon - bh + dy, 2, 2);
+                if ((bHash + dy) % 8 === 0) this.bCtx.fillRect(bx, vHorizon - bh + dy, 2, 2);
             }
 
-            if (b % 3 === 0) {
+            if (bHash % 3 === 0) {
                 this.bCtx.fillStyle = '#3f4f85';
                 this.bCtx.fillRect(bx + 2, vHorizon - bh + 8, 3, bh - 16);
-                if (b % 6 === 0) {
+                if (bHash % 6 === 0) {
                     this.bCtx.fillStyle = '#6db2ff';
                     this.bCtx.fillRect(bx + 2, vHorizon - (bh * 0.65), 3, 5);
-                    if (Math.random() > 0.8) {
+                    if (Math.abs(Math.sin(bHash * 42.5)) > 0.8) {
                         this.bCtx.fillStyle = '#e6c835';
                         this.bCtx.fillRect(bx + 2, vHorizon - (bh * 0.4), 2, 2);
                     }
@@ -234,7 +253,6 @@ export default class FZeroVisualizer {
         this.ctx.imageSmoothingEnabled = false; this.ctx.clearRect(0, 0, nw, nh);
         this.ctx.drawImage(this.buffer, 0, 0, nw, nh); 
 
-        // WORLD CLOCK 
         const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
         this.ctx.font = '64px "Press Start 2P"';
         const clockWidth = this.ctx.measureText(timeStr).width;
