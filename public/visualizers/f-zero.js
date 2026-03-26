@@ -12,11 +12,14 @@ export default class FZeroVisualizer {
         this.hasReceivedData = false; this.position = 0; this.lastDisplayAlarm = null; 
         this.passedAlarm = null; this.passingStartTime = 0; this.isPassing = false;
         this.spriteMap = {}; this.spriteCounter = 0; this.opponentTypes = ['opp1', 'opp2', 'opp3'];
-        this.sprites = { player: new Image(), opp1: new Image(), opp2: new Image(), opp3: new Image() };
+        
+        // --- ADDED SHADOW SPRITE ---
+        this.sprites = { player: new Image(), opp1: new Image(), opp2: new Image(), opp3: new Image(), shadow: new Image() };
         this.sprites.player.src = 'visualizers/sprites/player.png';
         this.sprites.opp1.src = 'visualizers/sprites/opponent1.png';
         this.sprites.opp2.src = 'visualizers/sprites/opponent2.png';
         this.sprites.opp3.src = 'visualizers/sprites/opponent3.png';
+        this.sprites.shadow.src = 'visualizers/sprites/shadow.png'; 
     }
 
     init() {
@@ -150,6 +153,17 @@ export default class FZeroVisualizer {
         }
     }
 
+    drawShadow(x, y, scale) {
+        const img = this.sprites.shadow; 
+        if (!img || !img.complete || img.naturalWidth === 0) return;
+        const cx = Math.round(img.naturalWidth * scale); 
+        const cy = Math.round(img.naturalHeight * scale);
+        this.ctx.save(); 
+        this.ctx.imageSmoothingEnabled = false;
+        this.ctx.drawImage(img, Math.round(x - cx/2), Math.round(y - cy/2), cx, cy);
+        this.ctx.restore();
+    }
+
     drawPlayer(now, x, y, scale) {
         const img = this.sprites.player; if (!img.complete || img.naturalWidth === 0) return;
         const cx = Math.round(img.naturalWidth * scale); const cy = Math.round(img.naturalHeight * scale);
@@ -215,8 +229,6 @@ export default class FZeroVisualizer {
             this.bCtx.fillRect(0, i * bandH, vw, bandH + 1);
         });
 
-        // --- REFINED: SUBTLE PARALLAX ---
-        // Multiplier reduced from 0.15 to 0.05 for a much heavier, distant feel
         const citySway = Math.floor(Math.sin(this.position * 0.05) * (vw * 0.05));
 
         this.bCtx.fillStyle = '#1a234f'; 
@@ -262,12 +274,26 @@ export default class FZeroVisualizer {
         this.drawSNESBox(ncx - clockBoxW/2, clockBoxY, clockBoxW, clockBoxH, 0.85);
         this.drawRetroText(timeStr, ncx, clockBoxY + (clockBoxH / 2), 64, '#e6c835', 'center', true);
 
-        const userScale = Math.max(4, nw / 300); const carBaseY = nh - (nh * 0.15); const pixelStep = 6; 
+        const pixelStep = 6; 
+        const userScale = Math.max(4, nw / 300); const carBaseY = nh - (nh * 0.15); 
         const driftX = Math.floor((Math.sin(this.position * 0.05) * (nw * 0.03)) / pixelStep) * pixelStep;
 
         let renderQueue = [];
-        renderQueue.push({ y: carBaseY, draw: () => this.drawPlayer(nowTime / 1000, ncx + driftX, carBaseY, userScale) });
+        
+        // --- ADDED TIGHT SHADOWS ---
+        // Negative offset pulls the shadow up closer behind the ship
+        const scaledHoverBaseY = -8 * (nh / 900); 
 
+        // 1. Queue Player Car + Shadow
+        renderQueue.push({ y: carBaseY, draw: () => {
+            const pImg = this.sprites.player;
+            if (pImg.complete) {
+                this.drawShadow(ncx + driftX, carBaseY + (pImg.naturalHeight * userScale) / 2 + scaledHoverBaseY, userScale);
+            }
+            this.drawPlayer(nowTime / 1000, ncx + driftX, carBaseY, userScale);
+        }});
+
+        // 2. Queue Opponent Cars + Shadows
         carAlarms.forEach((occ, index) => {
             const timeDiff = occ.date - nowTime;
             let trackYPct = Math.pow(1 - Math.max(0, timeDiff / windowMs), 5.0); 
@@ -277,16 +303,33 @@ export default class FZeroVisualizer {
             const carData = this.spriteMap[id] || { type: 'opp1', laneDir: 1 };
             let avoidance = trackYPct > 0.7 ? (trackYPct - 0.7) * 3.33 * (nw * 0.12) * carData.laneDir : 0;
             const carXOffset = Math.floor(((trackWidthAtY * 0.08) * carData.laneDir + Math.sin(this.position * 0.08 + index * 4) * (trackWidthAtY * 0.03) + avoidance) / pixelStep) * pixelStep; 
-            renderQueue.push({ y: carY, draw: () => this.drawOpponent(carData.type, ncx + carXOffset, carY, (userScale * 0.1) + ((userScale * 0.9) * trackYPct), occ) });
+            
+            renderQueue.push({ y: carY, draw: () => {
+                const carScale = (userScale * 0.1) + ((userScale * 0.9) * trackYPct);
+                const oppImg = this.sprites[carData.type];
+                if (oppImg && oppImg.complete) {
+                    this.drawShadow(ncx + carXOffset, carY + (oppImg.naturalHeight * carScale) / 2 + scaledHoverBaseY * (carScale / userScale), carScale);
+                }
+                this.drawOpponent(carData.type, ncx + carXOffset, carY, carScale, occ);
+            }});
         });
         
+        // 3. Queue Passing Car + Shadow
         if(this.isPassing && this.passedAlarm) {
             const passingPct = (Date.now() - this.passingStartTime) / 2500; 
             const id = String(this.passedAlarm.alarm.id || "temp");
             const passCarData = this.spriteMap[id] || { type: 'opp1', laneDir: 1 };
             const passY = Math.floor((carBaseY + passingPct * (nh * 0.8)) / pixelStep) * pixelStep;
             const loomX = Math.floor((ncx + (driftX * 0.5) + (passCarData.laneDir * (nw * 0.15)) + (passCarData.laneDir * passingPct * nw * 0.5)) / pixelStep) * pixelStep;
-            renderQueue.push({ y: passY, draw: () => this.drawOpponent(passCarData.type, loomX, passY, userScale + passingPct * (userScale * 1.5), null) });
+            
+            renderQueue.push({ y: passY, draw: () => {
+                const passScale = userScale + passingPct * (userScale * 1.5);
+                const passImg = this.sprites[passCarData.type];
+                if (passImg && passImg.complete) {
+                    this.drawShadow(loomX, passY + (passImg.naturalHeight * passScale) / 2 + scaledHoverBaseY * (passScale / userScale), passScale);
+                }
+                this.drawOpponent(passCarData.type, loomX, passY, passScale, null);
+            }});
         }
 
         renderQueue.sort((a, b) => a.y - b.y).forEach(item => item.draw());
