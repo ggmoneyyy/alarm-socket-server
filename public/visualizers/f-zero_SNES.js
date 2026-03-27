@@ -15,6 +15,16 @@ export default class FZeroVisualizer {
         
         this.trackHeading = 0; 
 
+        this.startupSound = new Audio('visualizers/sounds/f-zero_startup.mp3');
+        this.startupSound.loop = false;
+
+        this.bgMusic = new Audio('visualizers/sounds/bg_music.mp3');
+        this.bgMusic.loop = true;
+        this.bgMusic.volume = 0.3; 
+        this.isMusicPlaying = false; 
+        this.wasMusicPlayingBeforeAlarm = false;
+        this.musicBtn = null;
+
         this.sprites = { 
             player: new Image(), 
             opp1: new Image(), 
@@ -33,12 +43,68 @@ export default class FZeroVisualizer {
         this.sprites.trackStraight.src = 'visualizers/sprites/track_straight.png'; 
     }
 
+    createMusicToggle() {
+        if (this.musicBtn) return;
+        this.musicBtn = document.createElement('button');
+        
+        // Boosted z-index to 9999 to guarantee it sits above the canvas
+        this.musicBtn.style.cssText = 'position: absolute; top: 70px; right: 20px; width: 44px; height: 44px; border-radius: 50%; background: rgba(0,0,0,0.6); border: 2px solid #e6c835; color: #e6c835; cursor: pointer; opacity: 0.4; transition: opacity 0.2s, transform 0.1s; display: flex; justify-content: center; align-items: center; z-index: 9999; padding: 0; outline: none;';
+        
+        this.musicBtn.onmouseenter = () => this.musicBtn.style.opacity = '1.0';
+        this.musicBtn.onmouseleave = () => this.musicBtn.style.opacity = '0.4';
+        this.musicBtn.onmousedown = () => this.musicBtn.style.transform = 'scale(0.9)';
+        this.musicBtn.onmouseup = () => this.musicBtn.style.transform = 'scale(1)';
+
+        this.updateMusicIcon();
+
+        this.musicBtn.onclick = () => {
+            this.isMusicPlaying = !this.isMusicPlaying;
+            this.updateMusicIcon();
+            
+            if (this.activeRings.length > 0) {
+                this.wasMusicPlayingBeforeAlarm = this.isMusicPlaying;
+            } else {
+                if (this.isMusicPlaying) {
+                    this.bgMusic.play().catch(e => { console.log("BG Music play failed:", e); this.isMusicPlaying = false; this.updateMusicIcon(); });
+                } else {
+                    this.bgMusic.pause();
+                }
+            }
+        };
+
+        // --- FIXED: Anchor to the visualizer container instead of the whole page ---
+        if (this.canvas && this.canvas.parentElement) {
+            // Force the parent to be the relative anchor point so 'top: 70px, right: 20px' behaves correctly
+            if (window.getComputedStyle(this.canvas.parentElement).position === 'static') {
+                this.canvas.parentElement.style.position = 'relative';
+            }
+            this.canvas.parentElement.appendChild(this.musicBtn);
+        } else {
+            // Fallback just in case
+            document.body.appendChild(this.musicBtn);
+        }
+    }
+
+    updateMusicIcon() {
+        if (!this.musicBtn) return;
+        if (this.isMusicPlaying) {
+            this.musicBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>`;
+        } else {
+            this.musicBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/><line x1="2" y1="2" x2="22" y2="22" stroke="currentColor" stroke-width="2.5"/></svg>`;
+        }
+    }
+
     init() {
         this.alarms = []; this.activeRings = []; this.position = 0; this.hasReceivedData = false;
         this.lastDisplayAlarm = null; this.isPassing = false; this.passedAlarm = null;
         this.passingStartTime = 0; this.lastFrameTime = 0;
         this.trackScroll = 0; 
         this.trackHeading = 0; 
+
+        this.startupSound.currentTime = 0; 
+        this.startupSound.play().catch(e => console.log("Browser autoplay policy prevented the startup sound:", e));
+
+        this.createMusicToggle();
     }
 
     updateAlarms(nextOccurrences) {
@@ -56,6 +122,10 @@ export default class FZeroVisualizer {
     }
 
     handleRing(alarm) {
+        if (this.activeRings.length === 0) {
+            this.wasMusicPlayingBeforeAlarm = this.isMusicPlaying;
+            if (this.isMusicPlaying) this.bgMusic.pause();
+        }
         this.activeRings.push(alarm); 
     }
 
@@ -74,6 +144,11 @@ export default class FZeroVisualizer {
             document.removeEventListener('click', this.ringClickListener);
             this.ringClickListener = null;
             this.canvas.style.cursor = 'default';
+        }
+
+        if (this.wasMusicPlayingBeforeAlarm) {
+            this.bgMusic.play().catch(e => console.log("Audio resume failed:", e));
+            this.wasMusicPlayingBeforeAlarm = false; 
         }
     }
 
@@ -298,10 +373,7 @@ export default class FZeroVisualizer {
         const nearDstW = 13100; 
         const roadPct = 0.06;
 
-        // --- UPDATED: SEPARATED LEAN MATH ---
         const baseTrackLean = trackCurve * 2.5;
-        
-        // Player blends track curving WITH their own passive swerving velocity (Math.cos matches Math.sin drift)
         const playerLean = baseTrackLean + (Math.cos(this.position * 0.05) * 0.6);
 
         renderQueue.push({ z: 100, y: carBaseY, draw: () => {
@@ -327,7 +399,6 @@ export default class FZeroVisualizer {
             const curveOffset = trackCurve * Math.pow(1 - trackYPct, 2) * (nw * 0.70);
             const carXOffset = Math.floor(((trackWidthAtY * 0.5) * carData.laneDir + Math.sin(this.position * 0.08 + index * 4) * (trackWidthAtY * 0.1) + avoidance + curveOffset) / pixelStep) * pixelStep; 
             
-            // Opponents blend the base track curving with their own distinct lane swerving
             const oppLean = baseTrackLean + Math.cos(this.position * 0.08 + index * 4) * 0.6;
 
             renderQueue.push({ z: 10, y: carY, draw: () => {
@@ -424,6 +495,16 @@ export default class FZeroVisualizer {
     }
 
     destroy() { 
+        this.startupSound.pause();
+        this.startupSound.currentTime = 0;
+        
+        this.bgMusic.pause();
+        this.bgMusic.currentTime = 0;
+        if (this.musicBtn) {
+            this.musicBtn.remove();
+            this.musicBtn = null;
+        }
+
         this.stopRing(); 
     }
 }
