@@ -44,7 +44,7 @@ export default class TetrisVisualizer {
     createProceduralBackground() {
         const patCanvas = document.createElement('canvas');
         const blockSize = 14; 
-        const gridW = 100; // Creates a massive 1400x1400 pixel unique pattern
+        const gridW = 100; 
         const gridH = 100;
         patCanvas.width = blockSize * gridW;
         patCanvas.height = blockSize * gridH;
@@ -53,7 +53,6 @@ export default class TetrisVisualizer {
         const bgGrid = Array.from({ length: gridH }, () => Array(gridW).fill(0));
         let nextBlockId = 1;
 
-        // All 19 unique orientations of Tetrominoes mapped by their top-left-most block
         const templates = [
             [[0,0], [0,1], [1,0], [1,1]], // O
             [[0,0], [0,1], [0,2], [0,3]], // I_h
@@ -89,7 +88,6 @@ export default class TetrisVisualizer {
                     for (let [dr, dc] of shape) {
                         let nr = r + dr;
                         let nc = c + dc;
-                        // Reject if out of bounds or overlapping existing blocks
                         if (nr < 0 || nr >= gridH || nc < 0 || nc >= gridW || bgGrid[nr][nc] !== 0) {
                             canFit = false;
                             break;
@@ -105,20 +103,14 @@ export default class TetrisVisualizer {
                     }
                 }
 
-                // If no standard Tetromino fits the hole, plug it with a 1x1 block
-                if (!placed) {
-                    bgGrid[r][c] = nextBlockId++;
-                }
+                if (!placed) bgGrid[r][c] = nextBlockId++;
             }
         }
 
-        // Render the interlocking bevels
         pCtx.fillStyle = '#747474';
         pCtx.fillRect(0, 0, patCanvas.width, patCanvas.height);
 
-        const hi = 2; // Highlight width
-        const sh = 2; // Shadow width
-
+        const hi = 2; const sh = 2; 
         for (let r = 0; r < gridH; r++) {
             for (let c = 0; c < gridW; c++) {
                 const id = bgGrid[r][c];
@@ -130,22 +122,10 @@ export default class TetrisVisualizer {
                 const left = (c > 0) ? bgGrid[r][c - 1] : -1;
                 const right = (c < gridW - 1) ? bgGrid[r][c + 1] : -1;
 
-                if (up !== id) {
-                    pCtx.fillStyle = '#A8A8A8'; 
-                    pCtx.fillRect(x, y, blockSize, hi);
-                }
-                if (left !== id) {
-                    pCtx.fillStyle = '#A8A8A8'; 
-                    pCtx.fillRect(x, y, hi, blockSize);
-                }
-                if (down !== id) {
-                    pCtx.fillStyle = '#000000'; 
-                    pCtx.fillRect(x, y + blockSize - sh, blockSize, sh);
-                }
-                if (right !== id) {
-                    pCtx.fillStyle = '#000000'; 
-                    pCtx.fillRect(x + blockSize - sh, y, sh, blockSize);
-                }
+                if (up !== id) { pCtx.fillStyle = '#A8A8A8'; pCtx.fillRect(x, y, blockSize, hi); }
+                if (left !== id) { pCtx.fillStyle = '#A8A8A8'; pCtx.fillRect(x, y, hi, blockSize); }
+                if (down !== id) { pCtx.fillStyle = '#000000'; pCtx.fillRect(x, y + blockSize - sh, blockSize, sh); }
+                if (right !== id) { pCtx.fillStyle = '#000000'; pCtx.fillRect(x + blockSize - sh, y, sh, blockSize); }
             }
         }
         this.bgPatternCanvas = patCanvas;
@@ -178,7 +158,7 @@ export default class TetrisVisualizer {
         }
     }
 
-    // --- TETRIS LOGIC & PRO AI ---
+    // --- TETRIS LOGIC & SURVIVAL AI ---
     spawnPiece() {
         const type = this.nextPieceType;
         this.nextPieceType = Math.floor(Math.random() * 7) + 1;
@@ -282,7 +262,6 @@ export default class TetrisVisualizer {
         let holes = 0;
         let aggregateHeight = 0;
         let bumpiness = 0;
-        let wellColumn = this.gridW - 1; 
 
         for (let c = 0; c < this.gridW; c++) {
             let foundTop = false;
@@ -304,23 +283,11 @@ export default class TetrisVisualizer {
         }
 
         let score = 0;
-        score -= aggregateHeight * 0.5;
-        score -= holes * 10.0;
-        score -= bumpiness * 0.5;
-        
-        if (lines === 4) {
-            score += 1000; 
-        } else if (lines > 0) {
-            score += lines * 5; 
-        }
-
-        if (lines === 0) {
-            let wellBlocks = 0;
-            for(let r = 0; r < this.gridH; r++) {
-                if(board[r][wellColumn] !== 0) wellBlocks++;
-            }
-            score -= wellBlocks * 20;
-        }
+        // Survival Heuristic: Keep it flat, fill holes, clear lines whenever possible
+        score -= aggregateHeight * 0.6;
+        score -= holes * 25.0; // Massive penalty for holes
+        score -= bumpiness * 0.3;
+        score += lines * 50.0; // Consistently reward ANY line clear
 
         return score;
     }
@@ -361,13 +328,30 @@ export default class TetrisVisualizer {
         if (this.dropTimer > 1) { 
             this.dropTimer = 0;
             
+            // --- FIXED: Safe Rotation & Wall Kick Logic ---
             if (this.currentRot !== this.targetRot) {
-                this.currentPiece.shape = this.rotateMatrix(this.currentPiece.shape);
-                this.currentRot = (this.currentRot + 1) % 4;
+                let newShape = this.rotateMatrix(this.currentPiece.shape);
                 
-                while(this.checkCollision(this.currentPiece.x, this.currentPiece.y, this.currentPiece.shape)) {
-                    if (this.currentPiece.x < this.gridW / 2) this.currentPiece.x++;
-                    else this.currentPiece.x--;
+                // 1. Try rotating in place
+                if (!this.checkCollision(this.currentPiece.x, this.currentPiece.y, newShape)) {
+                    this.currentPiece.shape = newShape;
+                    this.currentRot = (this.currentRot + 1) % 4;
+                } 
+                // 2. Try wall-kick left
+                else if (!this.checkCollision(this.currentPiece.x - 1, this.currentPiece.y, newShape)) {
+                    this.currentPiece.shape = newShape;
+                    this.currentPiece.x--;
+                    this.currentRot = (this.currentRot + 1) % 4;
+                } 
+                // 3. Try wall-kick right
+                else if (!this.checkCollision(this.currentPiece.x + 1, this.currentPiece.y, newShape)) {
+                    this.currentPiece.shape = newShape;
+                    this.currentPiece.x++;
+                    this.currentRot = (this.currentRot + 1) % 4;
+                } 
+                // 4. Give up on rotation to prevent infinite loop freezing
+                else {
+                    this.targetRot = this.currentRot; 
                 }
                 return; 
             }
@@ -442,7 +426,7 @@ export default class TetrisVisualizer {
         this.ctx.lineWidth = 2;
         this.ctx.strokeRect(x, y, w, h);
         
-        this.ctx.strokeStyle = '#3CBCFC'; // NES Cyan
+        this.ctx.strokeStyle = '#3CBCFC'; 
         this.ctx.lineWidth = 2;
         this.ctx.strokeRect(x + 4, y + 4, w - 8, h - 8);
     }
@@ -484,24 +468,21 @@ export default class TetrisVisualizer {
         this.ctx.translate(offsetX, offsetY);
         this.ctx.scale(scale, scale);
 
-        // Apply inverse scaling to completely cover the browser window
         const invScale = 1 / scale;
         const bgX = -offsetX * invScale;
         const bgY = -offsetY * invScale;
         const bgW = nw * invScale;
         const bgH = nh * invScale;
 
-        // Draw the massive procedural background tile
         this.ctx.fillStyle = this.ctx.createPattern(this.bgPatternCanvas, 'repeat');
         this.ctx.fillRect(bgX, bgY, bgW, bgH);
 
         const isRinging = this.activeRings.length > 0;
         if (!isRinging) this.updateTetris();
 
-        // Coordinates
         const blockSize = 14; 
-        const matrixW = blockSize * this.gridW; // 140
-        const matrixH = blockSize * this.gridH; // 280
+        const matrixW = blockSize * this.gridW; 
+        const matrixH = blockSize * this.gridH; 
         const matrixX = 250; 
         const matrixY = 65;
         const nesOrange = '#F83800';
@@ -588,7 +569,6 @@ export default class TetrisVisualizer {
         });
 
         // --- DRAW RIGHT PANEL (NEXT ALARM, NEXT PIECE, LEVEL) ---
-        // NEXT ALARM Box 
         this.drawNESFrame(420, 55, 170, 95);
         this.drawRetroText("NEXT ALARM", 505, 70, 12, '#FFFFFF', 'center');
         
@@ -612,7 +592,6 @@ export default class TetrisVisualizer {
             this.drawRetroText("00:00:00", 505, 132, 16, '#FFFFFF', 'center');
         }
 
-        // NEXT PIECE Box
         this.drawNESFrame(470, 165, 70, 70);
         this.drawRetroText("NEXT", 505, 180, 10, '#FFFFFF', 'center');
         
@@ -632,7 +611,6 @@ export default class TetrisVisualizer {
             }
         }
 
-        // LEVEL Box 
         this.drawNESFrame(470, 250, 70, 50);
         this.drawRetroText("LEVEL", 505, 268, 10, '#FFFFFF', 'center');
         this.drawRetroText("07", 505, 285, 14, nesOrange, 'center');
