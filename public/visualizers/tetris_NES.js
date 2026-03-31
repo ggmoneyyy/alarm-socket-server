@@ -11,6 +11,22 @@ export default class TetrisVisualizer {
         this.fps = 30; this.lastFrameTime = 0;
         this.alarms = []; this.activeRings = []; this.ringClickListener = null;
         this.hasReceivedData = false;
+
+        // --- AUDIO SYSTEM ---
+        this.isMusicPlaying = false;
+        this.bgMusic = new Audio();
+        this.bgMusic.volume = 0.4; // Default starting volume (40%)
+        this.bgMusic.loop = true; // Loop the selected track forever
+        
+        // Full Tracklist
+        this.musicTracks = [
+            { name: 'NES BGM 1', file: '/visualizers/sounds/Tetris NES BGM 1.mp3' },
+            { name: 'NES BGM 2', file: '/visualizers/sounds/Tetris NES BGM 2.mp3' },
+            { name: 'NES BGM 3', file: '/visualizers/sounds/Tetris NES BGM 3.mp3' },
+            { name: 'GB A-TYPE', file: '/visualizers/sounds/Tetris GB A-Type Music.mp3' },
+            { name: 'GB B-TYPE', file: '/visualizers/sounds/Tetris GB B-Type Music.mp3' },
+            { name: 'GB C-TYPE', file: '/visualizers/sounds/Tetris GB C-Type Music.mp3' }
+        ];
         
         // --- GAME STATE ---
         this.gridW = 10; this.gridH = 20;
@@ -75,6 +91,22 @@ export default class TetrisVisualizer {
         this.createFloatingUI();
     }
 
+    // --- AUDIO LOGIC ---
+    playTrack(index) {
+        this.bgMusic.src = this.musicTracks[index].file;
+        this.bgMusic.play().catch(e => console.log("Audio play prevented:", e));
+        this.isMusicPlaying = true;
+        this.musicSlash.style.display = 'none';
+        this.trackMenu.style.display = 'none'; // Close menu
+    }
+
+    stopMusic() {
+        this.bgMusic.pause();
+        this.isMusicPlaying = false;
+        this.musicSlash.style.display = 'block';
+        this.trackMenu.style.display = 'none'; // Close menu
+    }
+
     // --- HTML DOM OVERLAY ---
     createFloatingUI() {
         if (this.uiContainer) return;
@@ -97,14 +129,24 @@ export default class TetrisVisualizer {
         this.modeBtn.style.cssText = btnStyle;
         this.modeBtn.innerHTML = `🎮`;
         
-        // Red Slash for "AI Mode"
         this.slash = document.createElement('div');
         this.slash.style.cssText = 'position:absolute; width:3px; height:36px; background:#F83800; transform:rotate(45deg); border: 1px solid #000;';
         this.modeBtn.appendChild(this.slash);
 
+        // Music Button
+        this.musicBtn = document.createElement('button');
+        this.musicBtn.style.cssText = btnStyle;
+        this.musicBtn.innerHTML = `🎵`;
+
+        this.musicSlash = document.createElement('div');
+        this.musicSlash.style.cssText = 'position:absolute; width:3px; height:36px; background:#F83800; transform:rotate(45deg); border: 1px solid #000;';
+        this.musicBtn.appendChild(this.musicSlash);
+
         // Hover Effects
-        this.modeBtn.onmouseenter = () => this.modeBtn.style.opacity = '1';
-        this.modeBtn.onmouseleave = () => this.modeBtn.style.opacity = '0.25';
+        [this.modeBtn, this.musicBtn].forEach(btn => {
+            btn.onmouseenter = () => btn.style.opacity = '1';
+            btn.onmouseleave = () => btn.style.opacity = '0.25';
+        });
 
         // Click Logic
         this.modeBtn.onclick = () => {
@@ -114,7 +156,110 @@ export default class TetrisVisualizer {
             this.resetGame();
         };
 
+        // --- NEW TRACK SELECTOR MENU ---
+        this.trackMenu = document.createElement('div');
+        this.trackMenu.style.cssText = `
+            position: absolute; right: 60px; top: 60px;
+            background: #000000; border: 2px solid #FFFFFF;
+            outline: 2px solid #3CBCFC; outline-offset: -6px;
+            padding: 16px; display: none; flex-direction: column; gap: 14px;
+            font-family: "Press Start 2P", monospace, sans-serif; font-size: 10px;
+            white-space: nowrap; box-shadow: 4px 4px 10px rgba(0,0,0,0.5);
+        `;
+
+        // Menu Toggle
+        this.musicBtn.onclick = () => {
+            this.trackMenu.style.display = this.trackMenu.style.display === 'none' ? 'flex' : 'none';
+        };
+
+        // Stop Audio Option
+        const stopItem = document.createElement('div');
+        stopItem.innerText = `🛑 STOP AUDIO`;
+        stopItem.style.cssText = "color: #F83800; cursor: pointer; transition: transform 0.1s;";
+        stopItem.onmouseenter = () => stopItem.style.transform = "scale(1.05) translateX(5px)";
+        stopItem.onmouseleave = () => stopItem.style.transform = "scale(1) translateX(0)";
+        stopItem.onclick = () => this.stopMusic();
+        this.trackMenu.appendChild(stopItem);
+
+        // Dynamic Track Options
+        this.musicTracks.forEach((track, index) => {
+            const trackItem = document.createElement('div');
+            trackItem.innerText = `► ${track.name}`;
+            trackItem.style.cssText = "color: #FFFFFF; cursor: pointer; transition: transform 0.1s, color 0.1s;";
+            trackItem.onmouseenter = () => {
+                trackItem.style.color = '#3CBCFC';
+                trackItem.style.transform = "scale(1.05) translateX(5px)";
+            };
+            trackItem.onmouseleave = () => {
+                trackItem.style.color = '#FFFFFF';
+                trackItem.style.transform = "scale(1) translateX(0)";
+            };
+            trackItem.onclick = () => this.playTrack(index);
+            this.trackMenu.appendChild(trackItem);
+        });
+
+        // --- CUSTOM RETRO SLIDER CSS ---
+        if (!document.getElementById('tetris-slider-css')) {
+            const style = document.createElement('style');
+            style.id = 'tetris-slider-css';
+            style.innerHTML = `
+                .retro-slider {
+                    -webkit-appearance: none;
+                    width: 100%;
+                    background: transparent;
+                    margin: 0;
+                    padding: 0;
+                }
+                .retro-slider:focus { outline: none; }
+                .retro-slider::-webkit-slider-runnable-track {
+                    width: 100%; height: 4px; cursor: pointer;
+                    background: #747474; border: 1px solid #000;
+                }
+                .retro-slider::-webkit-slider-thumb {
+                    height: 12px; width: 8px; background: #F83800;
+                    cursor: pointer; -webkit-appearance: none;
+                    margin-top: -5px; border: 1px solid #FFF;
+                }
+                .retro-slider::-moz-range-track {
+                    width: 100%; height: 4px; cursor: pointer;
+                    background: #747474; border: 1px solid #000;
+                }
+                .retro-slider::-moz-range-thumb {
+                    height: 12px; width: 8px; background: #F83800;
+                    cursor: pointer; border: 1px solid #FFF; border-radius: 0;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // --- VOLUME SLIDER DOM ---
+        const volWrapper = document.createElement('div');
+        volWrapper.style.cssText = "display: flex; align-items: center; gap: 8px; margin-top: 6px; padding-top: 14px; border-top: 2px dashed #3CBCFC;";
+        
+        const volLabel = document.createElement('div');
+        volLabel.innerText = "VOL";
+        volLabel.style.color = "#FFFFFF";
+
+        const volSlider = document.createElement('input');
+        volSlider.type = "range";
+        volSlider.min = "0";
+        volSlider.max = "1";
+        volSlider.step = "0.01";
+        volSlider.value = this.bgMusic.volume.toString();
+        volSlider.className = "retro-slider"; // Applying the custom CSS class
+        
+        volSlider.oninput = (e) => {
+            this.bgMusic.volume = e.target.value;
+        };
+
+        volWrapper.appendChild(volLabel);
+        volWrapper.appendChild(volSlider);
+        this.trackMenu.appendChild(volWrapper);
+
+        // Append everything
         this.uiContainer.appendChild(this.modeBtn);
+        this.uiContainer.appendChild(this.musicBtn);
+        this.uiContainer.appendChild(this.trackMenu);
         document.body.appendChild(this.uiContainer);
     }
 
@@ -345,7 +490,7 @@ export default class TetrisVisualizer {
                 }
             }
         }
-        this.currentPiece = null; // Hide piece during check/animation
+        this.currentPiece = null;
         this.checkLines();
     }
 
@@ -359,7 +504,7 @@ export default class TetrisVisualizer {
 
         if (this.animatingLines.length > 0) {
             this.gameState = 'ANIMATING_CLEAR';
-            this.animationTimer = 15; // 15 frames for the classic center-out clear
+            this.animationTimer = 15; 
         } else {
             this.spawnPiece();
         }
@@ -785,7 +930,6 @@ export default class TetrisVisualizer {
 
         if (this.isManual) {
             this.drawNESFrame(420, 298, 170, 55);
-            // Reduced 'CONTROLS' title size and adjusted Y-spacing
             this.drawRetroText("CONTROLS", 505, 308, 8, nesCyan, 'center');
             this.drawRetroText("ARROWS: MOVE/ROTATE", 505, 320, 7, '#FFFFFF', 'center');
             this.drawRetroText("SPACE: HARD DROP", 505, 331, 7, '#FFFFFF', 'center');
@@ -842,8 +986,14 @@ export default class TetrisVisualizer {
         this.stopRing(); 
         window.removeEventListener('keydown', this.keyHandler);
         
+        // Stop audio and completely clean up the DOM elements
+        this.bgMusic.pause();
+        this.bgMusic.src = '';
         if (this.uiContainer && document.body.contains(this.uiContainer)) {
             document.body.removeChild(this.uiContainer);
         }
+        
+        const customCss = document.getElementById('tetris-slider-css');
+        if (customCss) customCss.remove();
     }
 }
