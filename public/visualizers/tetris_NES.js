@@ -12,20 +12,50 @@ export default class TetrisVisualizer {
         this.alarms = []; this.activeRings = []; this.ringClickListener = null;
         this.hasReceivedData = false;
         
-        // --- TETRIS ENGINE ---
+        // --- GAME STATE ---
         this.gridW = 10; this.gridH = 20;
         this.grid = Array.from({ length: this.gridH }, () => Array(this.gridW).fill(0));
         this.dropTimer = 0; 
         this.currentPiece = null;
         this.nextPieceType = Math.floor(Math.random() * 7) + 1;
-        this.clearedLines = 0;
+        
+        this.totalLines = 0;
+        this.level = 0;
+        this.score = 0;
+        this.isManual = false;
+        this.isPaused = false;
+        this.gameState = 'PLAYING'; // 'PLAYING', 'ANIMATING_CLEAR', 'GAMEOVER_INPUT'
+        this.playerNameInput = '';
+        this.animatingLines = [];
+        this.animationTimer = 0;
+
+        try {
+            this.highScore = parseInt(localStorage.getItem('tetrisHighScore')) || 0;
+            this.highName = localStorage.getItem('tetrisHighName') || 'AAA';
+        } catch(e) {
+            this.highScore = 0;
+            this.highName = 'AAA';
+        }
 
         this.targetX = 0;
         this.targetRot = 0;
         this.currentRot = 0;
         this.targetShape = null;
 
-        // Standard Tetromino shapes
+        // NES Authentic Level Palettes
+        this.palettes = [
+            { primary: '#0058F8', secondary: '#3CBCFC' }, // 0: Blue / Cyan
+            { primary: '#00A800', secondary: '#88D800' }, // 1: Green / Lime
+            { primary: '#D800CC', secondary: '#F878F8' }, // 2: Purple / Pink
+            { primary: '#0058F8', secondary: '#58D854' }, // 3: Blue / Light Green
+            { primary: '#E40058', secondary: '#58F898' }, // 4: Magenta / Sea Green
+            { primary: '#58F898', secondary: '#6888FC' }, // 5: Sea Green / Light Blue
+            { primary: '#F83800', secondary: '#7C7C7C' }, // 6: Red / Grey
+            { primary: '#D82800', secondary: '#8800CC' }, // 7: Orange-Red / Purple
+            { primary: '#0058F8', secondary: '#F83800' }, // 8: Blue / Red
+            { primary: '#F83800', secondary: '#F87858' }  // 9: Red / Orange
+        ];
+
         this.shapes = [
             [],
             [[1,1,1,1]], // I (1)
@@ -37,86 +67,105 @@ export default class TetrisVisualizer {
             [[1,1,0],[0,1,1]]  // Z (7)
         ];
 
-        // Generate the massive, unique procedural background mosaic
+        // Keyboard Listener
+        this.keyHandler = (e) => this.handleKeyDown(e);
+        window.addEventListener('keydown', this.keyHandler);
+
         this.createProceduralBackground();
+        this.createFloatingUI();
+    }
+
+    // --- HTML DOM OVERLAY ---
+    createFloatingUI() {
+        if (this.uiContainer) return;
+
+        this.uiContainer = document.createElement('div');
+        this.uiContainer.style.cssText = 'position: fixed; top: 80px; right: 20px; display: flex; flex-direction: column; gap: 15px; z-index: 99999;';
+        
+        const btnStyle = `
+            width: 44px; height: 44px; border-radius: 50%;
+            background: rgba(0, 0, 0, 0.7); border: 2px solid #FFFFFF;
+            color: #FFFFFF; font-size: 20px; cursor: pointer;
+            display: flex; justify-content: center; align-items: center;
+            opacity: 0.25; transition: opacity 0.2s, border-color 0.2s;
+            position: relative; overflow: hidden; padding: 0;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3); outline: none;
+        `;
+
+        // Controller Button
+        this.modeBtn = document.createElement('button');
+        this.modeBtn.style.cssText = btnStyle;
+        this.modeBtn.innerHTML = `🎮`;
+        
+        // Red Slash for "AI Mode"
+        this.slash = document.createElement('div');
+        this.slash.style.cssText = 'position:absolute; width:3px; height:36px; background:#F83800; transform:rotate(45deg); border: 1px solid #000;';
+        this.modeBtn.appendChild(this.slash);
+
+        // Hover Effects
+        this.modeBtn.onmouseenter = () => this.modeBtn.style.opacity = '1';
+        this.modeBtn.onmouseleave = () => this.modeBtn.style.opacity = '0.25';
+
+        // Click Logic
+        this.modeBtn.onclick = () => {
+            if (this.activeRings.length > 0) return;
+            this.isManual = !this.isManual;
+            this.slash.style.display = this.isManual ? 'none' : 'block';
+            this.resetGame();
+        };
+
+        this.uiContainer.appendChild(this.modeBtn);
+        document.body.appendChild(this.uiContainer);
     }
 
     createProceduralBackground() {
         const patCanvas = document.createElement('canvas');
         const blockSize = 14; 
-        const gridW = 100; 
-        const gridH = 100;
-        patCanvas.width = blockSize * gridW;
-        patCanvas.height = blockSize * gridH;
+        const gridW = 100; const gridH = 100;
+        patCanvas.width = blockSize * gridW; patCanvas.height = blockSize * gridH;
         const pCtx = patCanvas.getContext('2d');
 
         const bgGrid = Array.from({ length: gridH }, () => Array(gridW).fill(0));
         let nextBlockId = 1;
 
         const templates = [
-            [[0,0], [0,1], [1,0], [1,1]], // O
-            [[0,0], [0,1], [0,2], [0,3]], // I_h
-            [[0,0], [1,0], [2,0], [3,0]], // I_v
-            [[0,0], [0,1], [0,2], [1,1]], // T_up
-            [[0,0], [1,-1], [1,0], [2,0]], // T_right
-            [[0,0], [1,-1], [1,0], [1,1]], // T_down
-            [[0,0], [1,0], [1,1], [2,0]], // T_left
-            [[0,0], [0,1], [0,2], [1,0]], // L_up
-            [[0,0], [0,1], [1,1], [2,1]], // L_right
-            [[0,0], [1,-2], [1,-1], [1,0]], // L_down
-            [[0,0], [1,0], [2,0], [2,1]], // L_left
-            [[0,0], [0,1], [0,2], [1,2]], // J_up
-            [[0,0], [1,0], [2,-1], [2,0]], // J_right
-            [[0,0], [1,0], [1,1], [1,2]], // J_down
-            [[0,0], [0,1], [1,0], [2,0]], // J_left
-            [[0,0], [0,1], [1,-1], [1,0]], // S_h
-            [[0,0], [1,0], [1,1], [2,1]], // S_v
-            [[0,0], [0,1], [1,1], [1,2]], // Z_h
-            [[0,0], [1,-1], [1,0], [2,-1]]  // Z_v
+            [[0,0], [0,1], [1,0], [1,1]], [[0,0], [0,1], [0,2], [0,3]], [[0,0], [1,0], [2,0], [3,0]], 
+            [[0,0], [0,1], [0,2], [1,1]], [[0,0], [1,-1], [1,0], [2,0]], [[0,0], [1,-1], [1,0], [1,1]], 
+            [[0,0], [1,0], [1,1], [2,0]], [[0,0], [0,1], [0,2], [1,0]], [[0,0], [0,1], [1,1], [2,1]], 
+            [[0,0], [1,-2], [1,-1], [1,0]], [[0,0], [1,0], [2,0], [2,1]], [[0,0], [0,1], [0,2], [1,2]], 
+            [[0,0], [1,0], [2,-1], [2,0]], [[0,0], [1,0], [1,1], [1,2]], [[0,0], [0,1], [1,0], [2,0]], 
+            [[0,0], [0,1], [1,-1], [1,0]], [[0,0], [1,0], [1,1], [2,1]], [[0,0], [0,1], [1,1], [1,2]], 
+            [[0,0], [1,-1], [1,0], [2,-1]] 
         ];
 
-        // High-speed packer algorithm
         for (let r = 0; r < gridH; r++) {
             for (let c = 0; c < gridW; c++) {
                 if (bgGrid[r][c] !== 0) continue;
-
                 const shuffled = [...templates].sort(() => Math.random() - 0.5);
                 let placed = false;
-
                 for (let shape of shuffled) {
                     let canFit = true;
                     for (let [dr, dc] of shape) {
-                        let nr = r + dr;
-                        let nc = c + dc;
+                        let nr = r + dr; let nc = c + dc;
                         if (nr < 0 || nr >= gridH || nc < 0 || nc >= gridW || bgGrid[nr][nc] !== 0) {
-                            canFit = false;
-                            break;
+                            canFit = false; break;
                         }
                     }
                     if (canFit) {
-                        for (let [dr, dc] of shape) {
-                            bgGrid[r + dr][c + dc] = nextBlockId;
-                        }
-                        nextBlockId++;
-                        placed = true;
-                        break;
+                        for (let [dr, dc] of shape) bgGrid[r + dr][c + dc] = nextBlockId;
+                        nextBlockId++; placed = true; break;
                     }
                 }
-
                 if (!placed) bgGrid[r][c] = nextBlockId++;
             }
         }
 
-        pCtx.fillStyle = '#747474';
-        pCtx.fillRect(0, 0, patCanvas.width, patCanvas.height);
-
+        pCtx.fillStyle = '#747474'; pCtx.fillRect(0, 0, patCanvas.width, patCanvas.height);
         const hi = 2; const sh = 2; 
         for (let r = 0; r < gridH; r++) {
             for (let c = 0; c < gridW; c++) {
                 const id = bgGrid[r][c];
-                const x = c * blockSize;
-                const y = r * blockSize;
-
+                const x = c * blockSize; const y = r * blockSize;
                 const up = (r > 0) ? bgGrid[r - 1][c] : -1;
                 const down = (r < gridH - 1) ? bgGrid[r + 1][c] : -1;
                 const left = (c > 0) ? bgGrid[r][c - 1] : -1;
@@ -134,9 +183,19 @@ export default class TetrisVisualizer {
     init() {
         this.alarms = []; this.activeRings = []; this.hasReceivedData = false;
         this.lastFrameTime = 0;
+        this.resetGame();
+    }
+
+    resetGame() {
         this.grid = Array.from({ length: this.gridH }, () => Array(this.gridW).fill(0));
-        this.clearedLines = 0;
+        this.totalLines = 0;
+        this.level = 0;
+        this.score = 0;
         this.targetShape = null;
+        this.isPaused = false;
+        this.gameState = 'PLAYING';
+        this.animatingLines = [];
+        this.animationTimer = 0;
         this.spawnPiece();
     }
 
@@ -147,6 +206,9 @@ export default class TetrisVisualizer {
 
     handleRing(alarm) {
         this.activeRings.push(alarm);
+        if (this.isManual && this.gameState === 'PLAYING') {
+            this.isPaused = true;
+        }
     }
 
     stopRing() {
@@ -158,14 +220,82 @@ export default class TetrisVisualizer {
         }
     }
 
-    // --- TETRIS LOGIC & SURVIVAL AI ---
+    handleKeyDown(e) {
+        if (this.activeRings.length > 0) return;
+
+        // High Score Name Entry Mode
+        if (this.gameState === 'GAMEOVER_INPUT') {
+            if (/^[a-zA-Z]$/.test(e.key) && this.playerNameInput.length < 3) {
+                this.playerNameInput += e.key.toUpperCase();
+            } else if (e.key === 'Backspace') {
+                this.playerNameInput = this.playerNameInput.slice(0, -1);
+            } else if (e.key === 'Enter' && this.playerNameInput.length === 3) {
+                this.highScore = this.score;
+                this.highName = this.playerNameInput;
+                try {
+                    localStorage.setItem('tetrisHighScore', this.highScore);
+                    localStorage.setItem('tetrisHighName', this.highName);
+                } catch(e) {}
+                this.resetGame();
+            }
+            return;
+        }
+
+        // Standard Gameplay Input
+        if (!this.isManual) return;
+        
+        // Handle Pause Toggle with 'P'
+        if (e.key.toLowerCase() === 'p' && this.gameState === 'PLAYING') {
+            this.isPaused = !this.isPaused;
+            return;
+        }
+
+        if (this.isPaused || this.gameState !== 'PLAYING') return;
+        
+        if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) {
+            e.preventDefault(); 
+        }
+
+        if (e.key === 'ArrowLeft') {
+            if (!this.checkCollision(this.currentPiece.x - 1, this.currentPiece.y, this.currentPiece.shape)) {
+                this.currentPiece.x--;
+            }
+        } else if (e.key === 'ArrowRight') {
+            if (!this.checkCollision(this.currentPiece.x + 1, this.currentPiece.y, this.currentPiece.shape)) {
+                this.currentPiece.x++;
+            }
+        } else if (e.key === 'ArrowDown') {
+            if (!this.checkCollision(this.currentPiece.x, this.currentPiece.y + 1, this.currentPiece.shape)) {
+                this.currentPiece.y++;
+                this.score += 1; 
+            }
+        } else if (e.key === 'ArrowUp') {
+            let newShape = this.rotateMatrix(this.currentPiece.shape);
+            if (!this.checkCollision(this.currentPiece.x, this.currentPiece.y, newShape)) {
+                this.currentPiece.shape = newShape;
+            } else if (!this.checkCollision(this.currentPiece.x - 1, this.currentPiece.y, newShape)) {
+                this.currentPiece.shape = newShape; this.currentPiece.x--;
+            } else if (!this.checkCollision(this.currentPiece.x + 1, this.currentPiece.y, newShape)) {
+                this.currentPiece.shape = newShape; this.currentPiece.x++;
+            }
+        } else if (e.key === ' ') {
+            let dropDist = 0;
+            while (!this.checkCollision(this.currentPiece.x, this.currentPiece.y + 1, this.currentPiece.shape)) {
+                this.currentPiece.y++;
+                dropDist++;
+            }
+            this.score += dropDist * 2; 
+            this.lockPiece();
+        }
+    }
+
+    // --- TETRIS LOGIC ---
     spawnPiece() {
         const type = this.nextPieceType;
         this.nextPieceType = Math.floor(Math.random() * 7) + 1;
         
         this.currentPiece = {
-            shape: this.shapes[type],
-            type: type,
+            shape: this.shapes[type], type: type,
             x: Math.floor(this.gridW / 2) - Math.floor(this.shapes[type][0].length / 2),
             y: 0
         };
@@ -174,122 +304,35 @@ export default class TetrisVisualizer {
         this.currentRot = 0;
 
         if (this.checkCollision(this.currentPiece.x, this.currentPiece.y, this.currentPiece.shape)) {
-            this.grid = Array.from({ length: this.gridH }, () => Array(this.gridW).fill(0));
-            this.clearedLines = 0;
+            if (this.isManual && this.score > this.highScore) {
+                this.gameState = 'GAMEOVER_INPUT';
+                this.playerNameInput = '';
+            } else {
+                this.resetGame();
+            }
         }
     }
 
     rotateMatrix(matrix) {
-        const N = matrix.length;
-        const M = matrix[0].length;
+        const N = matrix.length; const M = matrix[0].length;
         let result = Array.from({length: M}, () => Array(N).fill(0));
         for (let r = 0; r < N; r++) {
-            for (let c = 0; c < M; c++) {
-                result[c][N - 1 - r] = matrix[r][c];
-            }
+            for (let c = 0; c < M; c++) result[c][N - 1 - r] = matrix[r][c];
         }
         return result;
     }
 
     checkCollision(nx, ny, shape) {
+        if (!shape) return true;
         for (let r = 0; r < shape.length; r++) {
             for (let c = 0; c < shape[r].length; c++) {
                 if (!shape[r][c]) continue;
-                let newX = nx + c;
-                let newY = ny + r;
+                let newX = nx + c; let newY = ny + r;
                 if (newX < 0 || newX >= this.gridW || newY >= this.gridH) return true;
                 if (newY >= 0 && this.grid[newY][newX] !== 0) return true;
             }
         }
         return false;
-    }
-
-    calculateBestMove() {
-        let bestScore = -Infinity;
-        let bestX = 0;
-        let bestRot = 0;
-        let bestShape = this.currentPiece.shape;
-
-        let currentShape = this.currentPiece.shape;
-        
-        for (let rot = 0; rot < 4; rot++) {
-            for (let x = -3; x < this.gridW; x++) {
-                if (!this.checkCollision(x, 0, currentShape)) {
-                    let y = 0;
-                    while (!this.checkCollision(x, y + 1, currentShape)) { y++; }
-                    
-                    let score = this.evaluateBoard(x, y, currentShape);
-                    
-                    if (score > bestScore) {
-                        bestScore = score;
-                        bestX = x;
-                        bestRot = rot;
-                        bestShape = currentShape;
-                    }
-                }
-            }
-            currentShape = this.rotateMatrix(currentShape);
-        }
-        
-        this.targetX = bestX;
-        this.targetRot = bestRot;
-        this.targetShape = bestShape;
-    }
-
-    evaluateBoard(x, y, shape) {
-        let board = this.grid.map(row => [...row]);
-        for (let r = 0; r < shape.length; r++) {
-            for (let c = 0; c < shape[r].length; c++) {
-                if (shape[r][c] && y + r >= 0) {
-                    board[y + r][x + c] = 1;
-                }
-            }
-        }
-
-        let lines = 0;
-        let newBoard = [];
-        for (let r = 0; r < this.gridH; r++) {
-            if (board[r].every(cell => cell !== 0)) {
-                lines++;
-            } else {
-                newBoard.push(board[r]);
-            }
-        }
-        while(newBoard.length < this.gridH) newBoard.unshift(Array(this.gridW).fill(0));
-        board = newBoard;
-
-        let heights = Array(this.gridW).fill(0);
-        let holes = 0;
-        let aggregateHeight = 0;
-        let bumpiness = 0;
-
-        for (let c = 0; c < this.gridW; c++) {
-            let foundTop = false;
-            for (let r = 0; r < this.gridH; r++) {
-                if (board[r][c] !== 0) {
-                    if (!foundTop) {
-                        heights[c] = this.gridH - r;
-                        aggregateHeight += heights[c];
-                        foundTop = true;
-                    }
-                } else if (foundTop) {
-                    holes++;
-                }
-            }
-        }
-
-        for (let c = 0; c < this.gridW - 1; c++) {
-            bumpiness += Math.abs(heights[c] - heights[c + 1]);
-        }
-
-        let score = 0;
-        // Survival Heuristic: Keep it flat, fill holes, clear lines whenever possible
-        score -= aggregateHeight * 0.6;
-        score -= holes * 25.0; // Massive penalty for holes
-        score -= bumpiness * 0.3;
-        score += lines * 50.0; // Consistently reward ANY line clear
-
-        return score;
     }
 
     lockPiece() {
@@ -302,55 +345,142 @@ export default class TetrisVisualizer {
                 }
             }
         }
-        this.clearLines();
+        this.currentPiece = null; // Hide piece during check/animation
+        this.checkLines();
+    }
+
+    checkLines() {
+        this.animatingLines = [];
+        for (let r = 0; r < this.gridH; r++) {
+            if (this.grid[r].every(cell => cell !== 0)) {
+                this.animatingLines.push(r);
+            }
+        }
+
+        if (this.animatingLines.length > 0) {
+            this.gameState = 'ANIMATING_CLEAR';
+            this.animationTimer = 15; // 15 frames for the classic center-out clear
+        } else {
+            this.spawnPiece();
+        }
+    }
+
+    executeLineClear() {
+        let linesClearedNow = this.animatingLines.length;
+        let newGrid = [];
+        
+        // Filter out cleared lines
+        for (let r = 0; r < this.gridH; r++) {
+            if (!this.animatingLines.includes(r)) {
+                newGrid.push(this.grid[r]);
+            }
+        }
+        
+        // Pad top with empty lines
+        while (newGrid.length < this.gridH) {
+            newGrid.unshift(Array(this.gridW).fill(0));
+        }
+        
+        this.grid = newGrid;
+        
+        const baseScores = [0, 40, 100, 300, 1200];
+        this.score += baseScores[linesClearedNow] * (this.level + 1);
+        this.totalLines += linesClearedNow;
+        this.level = Math.floor(this.totalLines / 10);
+        
+        this.animatingLines = [];
+        this.gameState = 'PLAYING';
         this.spawnPiece();
     }
 
-    clearLines() {
-        let linesClearedNow = 0;
-        for (let r = this.gridH - 1; r >= 0; r--) {
-            if (this.grid[r].every(cell => cell !== 0)) {
-                this.grid.splice(r, 1);
-                this.grid.unshift(Array(this.gridW).fill(0));
-                linesClearedNow++;
-                r++; 
+    // --- MANUAL LOOP ---
+    updateManual() {
+        this.dropTimer++;
+        const speed = Math.max(2, 24 - (this.level * 2)); 
+        if (this.dropTimer > speed) {
+            this.dropTimer = 0;
+            if (this.currentPiece && !this.checkCollision(this.currentPiece.x, this.currentPiece.y + 1, this.currentPiece.shape)) {
+                this.currentPiece.y++;
+            } else {
+                this.lockPiece();
             }
         }
-        this.clearedLines += linesClearedNow;
+    }
+
+    // --- AI LOOP ---
+    calculateBestMove() {
+        let bestScore = -Infinity;
+        let bestX = 0; let bestRot = 0; let bestShape = this.currentPiece.shape;
+        let currentShape = this.currentPiece.shape;
+        
+        for (let rot = 0; rot < 4; rot++) {
+            for (let x = -3; x < this.gridW; x++) {
+                if (!this.checkCollision(x, 0, currentShape)) {
+                    let y = 0;
+                    while (!this.checkCollision(x, y + 1, currentShape)) { y++; }
+                    let score = this.evaluateBoard(x, y, currentShape);
+                    if (score > bestScore) {
+                        bestScore = score; bestX = x; bestRot = rot; bestShape = currentShape;
+                    }
+                }
+            }
+            currentShape = this.rotateMatrix(currentShape);
+        }
+        this.targetX = bestX; this.targetRot = bestRot; this.targetShape = bestShape;
+    }
+
+    evaluateBoard(x, y, shape) {
+        let board = this.grid.map(row => [...row]);
+        for (let r = 0; r < shape.length; r++) {
+            for (let c = 0; c < shape[r].length; c++) {
+                if (shape[r][c] && y + r >= 0) board[y + r][x + c] = 1;
+            }
+        }
+
+        let lines = 0; let newBoard = [];
+        for (let r = 0; r < this.gridH; r++) {
+            if (board[r].every(cell => cell !== 0)) lines++;
+            else newBoard.push(board[r]);
+        }
+        while(newBoard.length < this.gridH) newBoard.unshift(Array(this.gridW).fill(0));
+        board = newBoard;
+
+        let heights = Array(this.gridW).fill(0);
+        let holes = 0; let aggregateHeight = 0; let bumpiness = 0;
+
+        for (let c = 0; c < this.gridW; c++) {
+            let foundTop = false;
+            for (let r = 0; r < this.gridH; r++) {
+                if (board[r][c] !== 0) {
+                    if (!foundTop) { heights[c] = this.gridH - r; aggregateHeight += heights[c]; foundTop = true; }
+                } else if (foundTop) { holes++; }
+            }
+        }
+        for (let c = 0; c < this.gridW - 1; c++) bumpiness += Math.abs(heights[c] - heights[c + 1]);
+
+        let score = 0;
+        score -= aggregateHeight * 0.6;
+        score -= holes * 25.0; 
+        score -= bumpiness * 0.3;
+        score += lines * 50.0; 
+        return score;
     }
 
     updateTetris() {
-        if (!this.targetShape) {
-            this.calculateBestMove();
-        }
-
+        if (!this.targetShape) this.calculateBestMove();
         this.dropTimer++;
         if (this.dropTimer > 1) { 
             this.dropTimer = 0;
             
-            // --- FIXED: Safe Rotation & Wall Kick Logic ---
             if (this.currentRot !== this.targetRot) {
                 let newShape = this.rotateMatrix(this.currentPiece.shape);
-                
-                // 1. Try rotating in place
                 if (!this.checkCollision(this.currentPiece.x, this.currentPiece.y, newShape)) {
-                    this.currentPiece.shape = newShape;
-                    this.currentRot = (this.currentRot + 1) % 4;
-                } 
-                // 2. Try wall-kick left
-                else if (!this.checkCollision(this.currentPiece.x - 1, this.currentPiece.y, newShape)) {
-                    this.currentPiece.shape = newShape;
-                    this.currentPiece.x--;
-                    this.currentRot = (this.currentRot + 1) % 4;
-                } 
-                // 3. Try wall-kick right
-                else if (!this.checkCollision(this.currentPiece.x + 1, this.currentPiece.y, newShape)) {
-                    this.currentPiece.shape = newShape;
-                    this.currentPiece.x++;
-                    this.currentRot = (this.currentRot + 1) % 4;
-                } 
-                // 4. Give up on rotation to prevent infinite loop freezing
-                else {
+                    this.currentPiece.shape = newShape; this.currentRot = (this.currentRot + 1) % 4;
+                } else if (!this.checkCollision(this.currentPiece.x - 1, this.currentPiece.y, newShape)) {
+                    this.currentPiece.shape = newShape; this.currentPiece.x--; this.currentRot = (this.currentRot + 1) % 4;
+                } else if (!this.checkCollision(this.currentPiece.x + 1, this.currentPiece.y, newShape)) {
+                    this.currentPiece.shape = newShape; this.currentPiece.x++; this.currentRot = (this.currentRot + 1) % 4;
+                } else {
                     this.targetRot = this.currentRot; 
                 }
                 return; 
@@ -358,13 +488,11 @@ export default class TetrisVisualizer {
             
             if (this.currentPiece.x < this.targetX) {
                 if(!this.checkCollision(this.currentPiece.x + 1, this.currentPiece.y, this.currentPiece.shape)) {
-                    this.currentPiece.x++;
-                    return;
+                    this.currentPiece.x++; return;
                 }
             } else if (this.currentPiece.x > this.targetX) {
                 if(!this.checkCollision(this.currentPiece.x - 1, this.currentPiece.y, this.currentPiece.shape)) {
-                    this.currentPiece.x--;
-                    return;
+                    this.currentPiece.x--; return;
                 }
             }
             
@@ -376,11 +504,13 @@ export default class TetrisVisualizer {
         }
     }
 
-    // --- EXACT NES RENDERING ---
+    // --- UI DRAWING EXPERT ---
     drawNESBlock(x, y, size, colorIndex) {
         if (colorIndex === 0) return;
-        const isRed = (colorIndex === 1 || colorIndex === 4 || colorIndex === 5);
-        const baseColor = isRed ? '#D82800' : '#8800CC'; 
+        
+        const p = this.palettes[this.level % 10];
+        const isPrimary = (colorIndex === 1 || colorIndex === 4 || colorIndex === 5);
+        const baseColor = isPrimary ? p.primary : p.secondary; 
         
         this.ctx.fillStyle = baseColor;
         this.ctx.fillRect(x, y, size, size);
@@ -400,8 +530,10 @@ export default class TetrisVisualizer {
 
     drawMiniBlock(x, y, size, colorIndex) {
         if (colorIndex === 0) return;
-        const isRed = (colorIndex === 1 || colorIndex === 4 || colorIndex === 5);
-        const baseColor = isRed ? '#D82800' : '#8800CC'; 
+        
+        const p = this.palettes[this.level % 10];
+        const isPrimary = (colorIndex === 1 || colorIndex === 4 || colorIndex === 5);
+        const baseColor = isPrimary ? p.primary : p.secondary; 
         
         this.ctx.fillStyle = baseColor;
         this.ctx.fillRect(x, y, size, size);
@@ -478,7 +610,22 @@ export default class TetrisVisualizer {
         this.ctx.fillRect(bgX, bgY, bgW, bgH);
 
         const isRinging = this.activeRings.length > 0;
-        if (!isRinging) this.updateTetris();
+        
+        // Handle Game States & Logic Updates
+        if (!isRinging) {
+            if (this.gameState === 'ANIMATING_CLEAR') {
+                this.animationTimer--;
+                if (this.animationTimer <= 0) {
+                    this.executeLineClear();
+                }
+            } else if (this.gameState === 'PLAYING') {
+                if (this.isManual) {
+                    if (!this.isPaused) this.updateManual();
+                } else {
+                    this.updateTetris();
+                }
+            }
+        }
 
         const blockSize = 14; 
         const matrixW = blockSize * this.gridW; 
@@ -502,13 +649,22 @@ export default class TetrisVisualizer {
         this.ctx.clip();
 
         for (let r = 0; r < this.gridH; r++) {
+            let isAnimatingRow = this.animatingLines.includes(r);
+            // Hide cols spreading from center (cols 4,5) outwards over 15 frames
+            let hideCols = isAnimatingRow ? Math.floor((15 - this.animationTimer) / 3) : -1; 
+
             for (let c = 0; c < this.gridW; c++) {
                 if (this.grid[r][c] !== 0) {
+                    if (isAnimatingRow) {
+                        let distFromCenter = c < 5 ? 4 - c : c - 5; 
+                        if (distFromCenter <= hideCols) continue; // Skip drawing this block for animation
+                    }
                     this.drawNESBlock(matrixX + c * blockSize, matrixY + r * blockSize, blockSize, this.grid[r][c]);
                 }
             }
         }
-        if (this.currentPiece) {
+        
+        if (this.currentPiece && this.gameState === 'PLAYING') {
             for (let r = 0; r < this.currentPiece.shape.length; r++) {
                 for (let c = 0; c < this.currentPiece.shape[r].length; c++) {
                     if (this.currentPiece.shape[r][c]) {
@@ -519,9 +675,15 @@ export default class TetrisVisualizer {
         }
         this.ctx.restore();
 
-        // --- DRAW LEFT PANEL (A-TYPE & STATISTICS) ---
-        this.drawNESFrame(85, 55, 100, 32);
-        this.drawRetroText("A-TYPE", 135, 71, 12, '#FFFFFF', 'center');
+        if (this.isPaused) {
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            this.ctx.fillRect(matrixX, matrixY, matrixW, matrixH);
+            this.drawRetroText("PAUSED", matrixX + matrixW/2, matrixY + matrixH/2, 14, '#FFFFFF', 'center');
+        }
+
+        // --- DRAW LEFT PANEL (LINES & STATISTICS) ---
+        this.drawNESFrame(85, 55, 120, 32);
+        this.drawRetroText(`LINES-${this.totalLines.toString().padStart(3, '0')}`, 145, 71, 10, '#FFFFFF', 'center');
 
         this.drawNESFrame(30, 100, 190, 245);
         this.drawRetroText("UPCOMING", 125, 118, 12, '#FFFFFF', 'center');
@@ -568,9 +730,15 @@ export default class TetrisVisualizer {
             startY += requiredSpace;
         });
 
-        // --- DRAW RIGHT PANEL (NEXT ALARM, NEXT PIECE, LEVEL) ---
-        this.drawNESFrame(420, 55, 170, 95);
-        this.drawRetroText("NEXT ALARM", 505, 70, 12, '#FFFFFF', 'center');
+        // --- DRAW RIGHT PANEL (SCORE, NEXT ALARM, NEXT PIECE, LEVEL) ---
+        this.drawNESFrame(420, 10, 170, 42);
+        this.drawRetroText("TOP", 430, 22, 10, '#FFFFFF', 'left');
+        this.drawRetroText(`${this.highName} ${this.highScore.toString().padStart(6, '0')}`, 580, 22, 10, nesOrange, 'right');
+        this.drawRetroText("SCORE", 430, 38, 10, '#FFFFFF', 'left');
+        this.drawRetroText(this.score.toString().padStart(6, '0'), 580, 38, 10, '#FFFFFF', 'right');
+
+        this.drawNESFrame(420, 58, 170, 95);
+        this.drawRetroText("NEXT ALARM", 505, 73, 12, '#FFFFFF', 'center');
         
         const nextAlarm = visibleAlarms[0];
         if (nextAlarm) {
@@ -582,25 +750,25 @@ export default class TetrisVisualizer {
             const label = (nextAlarm.alarm.label || 'ALARM').toUpperCase();
             const lines = this.getWrappedLines(label, 150, 10);
             
-            let startLabelY = 88;
+            let startLabelY = 91;
             lines.slice(0, 3).forEach((line, i) => {
                 this.drawRetroText(line, 505, startLabelY + (i * 12), 10, nesCyan, 'center');
             });
             
-            this.drawRetroText(`${hrs}:${mins}:${secs}`, 505, 132, 16, nesOrange, 'center');
+            this.drawRetroText(`${hrs}:${mins}:${secs}`, 505, 135, 16, nesOrange, 'center');
         } else {
-            this.drawRetroText("00:00:00", 505, 132, 16, '#FFFFFF', 'center');
+            this.drawRetroText("00:00:00", 505, 135, 16, '#FFFFFF', 'center');
         }
 
-        this.drawNESFrame(470, 165, 70, 70);
-        this.drawRetroText("NEXT", 505, 180, 10, '#FFFFFF', 'center');
+        this.drawNESFrame(470, 160, 70, 70);
+        this.drawRetroText("NEXT", 505, 175, 10, '#FFFFFF', 'center');
         
         const npShape = this.shapes[this.nextPieceType];
         if (npShape) {
             const pW = npShape[0].length * blockSize;
             const pH = npShape.length * blockSize;
             const px = 470 + (70 - pW) / 2;
-            const py = 212.5 - (pH / 2); 
+            const py = 207.5 - (pH / 2); 
             
             for (let r = 0; r < npShape.length; r++) {
                 for (let c = 0; c < npShape[r].length; c++) {
@@ -611,9 +779,34 @@ export default class TetrisVisualizer {
             }
         }
 
-        this.drawNESFrame(470, 250, 70, 50);
-        this.drawRetroText("LEVEL", 505, 268, 10, '#FFFFFF', 'center');
-        this.drawRetroText("07", 505, 285, 14, nesOrange, 'center');
+        this.drawNESFrame(470, 240, 70, 50);
+        this.drawRetroText("LEVEL", 505, 258, 10, '#FFFFFF', 'center');
+        this.drawRetroText(this.level.toString().padStart(2, '0'), 505, 275, 14, nesOrange, 'center');
+
+        if (this.isManual) {
+            this.drawNESFrame(420, 298, 170, 55);
+            // Reduced 'CONTROLS' title size and adjusted Y-spacing
+            this.drawRetroText("CONTROLS", 505, 308, 8, nesCyan, 'center');
+            this.drawRetroText("ARROWS: MOVE/ROTATE", 505, 320, 7, '#FFFFFF', 'center');
+            this.drawRetroText("SPACE: HARD DROP", 505, 331, 7, '#FFFFFF', 'center');
+            this.drawRetroText("P: PAUSE", 505, 342, 7, '#FFFFFF', 'center');
+        }
+
+        // --- NEW HIGH SCORE MODAL ---
+        if (this.gameState === 'GAMEOVER_INPUT') {
+            const ncx = this.vw / 2;
+            const boxH = 140; const boxY = this.vh / 2 - boxH / 2;
+            this.drawNESFrame(ncx - 180, boxY, 360, boxH);
+            
+            this.drawRetroText("NEW HIGH SCORE!", ncx, boxY + 40, 16, nesOrange, 'center');
+            this.drawRetroText("ENTER NAME:", ncx, boxY + 75, 12, '#FFFFFF', 'center');
+            
+            const cursor = (Math.floor(Date.now() / 300) % 2 === 0) ? '_' : ' ';
+            let displayString = this.playerNameInput;
+            if (displayString.length < 3) displayString += cursor;
+            
+            this.drawRetroText(displayString, ncx, boxY + 105, 16, nesCyan, 'center');
+        }
 
         // --- ALARM RINGING MODAL ---
         if (isRinging) {
@@ -647,5 +840,10 @@ export default class TetrisVisualizer {
 
     destroy() { 
         this.stopRing(); 
+        window.removeEventListener('keydown', this.keyHandler);
+        
+        if (this.uiContainer && document.body.contains(this.uiContainer)) {
+            document.body.removeChild(this.uiContainer);
+        }
     }
 }
