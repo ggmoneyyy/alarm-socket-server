@@ -145,9 +145,6 @@ app.get('/', (req, res) => {
     `);
 });
 
-// Initialize Data
-loadFromBackup();
-
 // --- SOCKET LOGIC ---
 io.on('connection', (socket) => {
     console.log('⚡ User connected:', socket.id);
@@ -155,7 +152,7 @@ io.on('connection', (socket) => {
     // Send current data, sound list, AND visualizer list immediately to new user
     socket.emit('init-data', appData);
     socket.emit('available-sounds', getAvailableSounds());
-    socket.emit('available-visualizers', getAvailableVisualizers()); // <-- NEW LINE
+    socket.emit('available-visualizers', getAvailableVisualizers());
 
     socket.on('update-data', (newData) => {
         if(newData && newData.profiles) {
@@ -167,6 +164,12 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+
+// --- THE FIX: Wait for backup before listening ---
+// This ensures that when Render restarts the server overnight, 
+// the socket connection won't send empty data to your work computer!
+loadFromBackup().then(() => {
+    server.listen(PORT, () => {
+        console.log(`🚀 Server running on port ${PORT} with data fully loaded!`);
+    });
 });
